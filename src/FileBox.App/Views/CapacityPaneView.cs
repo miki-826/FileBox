@@ -15,7 +15,7 @@ public sealed class CapacityPaneView : UserControl
 {
     public CapacityPaneViewModel ViewModel { get; }
     readonly IWorkspaceActions _actions;
-    readonly StackPanel _body = new() { Spacing = 6, Padding = new Thickness(16, 8, 16, 16) };
+    readonly StackPanel _body = new() { Spacing = 12, Padding = new Thickness(16, 12, 16, 20) };
     readonly ProgressRing _ring = new() { Width = 18, Height = 18 };
 
     public CapacityPaneView(CapacityPaneViewModel viewModel, IWorkspaceActions actions)
@@ -26,7 +26,7 @@ public sealed class CapacityPaneView : UserControl
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var header = new Grid { Padding = new Thickness(12, 8, 12, 8), ColumnSpacing = 8, BorderBrush = Brush("DividerStrokeColorDefaultBrush"), BorderThickness = new Thickness(0, 0, 0, 1) };
+        var header = new Grid { Padding = new Thickness(16, 14, 16, 14), ColumnSpacing = 12, BorderBrush = Brush("DividerStrokeColorDefaultBrush"), BorderThickness = new Thickness(0, 0, 0, 1) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

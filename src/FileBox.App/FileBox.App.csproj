@@ -34,8 +34,15 @@
 
   <!-- Indexer を App の出力フォルダへ同梱する（App が自動起動する） -->
   <Target Name="CopyIndexer" AfterTargets="Build">
+    <MSBuild Projects="..\FileBox.Indexer\FileBox.Indexer.csproj" Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);Platform=$(Platform)">
+      <Output TaskParameter="TargetOutputs" ItemName="IndexerTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <IndexerOutputDirectory>@(IndexerTargetPath->'%(RootDir)%(Directory)')</IndexerOutputDirectory>
+    </PropertyGroup>
     <ItemGroup>
-      <IndexerFiles Include="..\FileBox.Indexer\bin\$(Configuration)\net8.0-windows\**\*.*" />
+      <IndexerFiles Include="$(IndexerOutputDirectory)**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(IndexerFiles)" DestinationFolder="$(OutDir)indexer\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>

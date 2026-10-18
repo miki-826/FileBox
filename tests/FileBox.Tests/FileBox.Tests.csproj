@@ -9,6 +9,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\FileBox.Setup\Package.cs" Link="Setup\Package.cs" />
     <ProjectReference Include="..\..\src\FileBox.Core\FileBox.Core.csproj" />
     <ProjectReference Include="..\..\src\FileBox.Indexer\FileBox.Indexer.csproj" />
     <ProjectReference Include="..\..\src\FileBox.Contracts\FileBox.Contracts.csproj" />

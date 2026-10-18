@@ -1,6 +1,4 @@
-# テストを実行し、Windows 用の実行ファイル一式（zip）を作る。
-# 開発プレビュー: main への push で「preview」プレリリースを作り直す（正式リリースではない）。
-name: build
+name: FileBox 開発プレビューの作成・配布
 
 on:
   push:
@@ -9,59 +7,108 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # プレリリースの更新に必要
+  contents: read
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
+    name: テスト・Windows 版の作成
     runs-on: windows-latest
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
-      - name: テスト
+      - name: 単体テスト
         run: dotnet test FileBox.sln -c Release
 
-      - name: アプリをビルド（x64）
-        run: dotnet build src/FileBox.App -c Release -p:Platform=x64
+      - name: 本体をビルド（ランタイム同梱・x64）
+        run: dotnet build src/FileBox.App -c Release -p:Platform=x64 -r win-x64 -p:SelfContained=true
 
-      - name: zip にまとめる
+      - name: ZIP を検証し、ダウンロード用 EXE を作成
         shell: pwsh
-        run: |
-          $out = "src/FileBox.App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64"
-          if (-not (Test-Path "$out/FileBox.exe")) { throw "FileBox.exe が見つかりません: $out" }
-          if (-not (Test-Path "$out/indexer/FileBox.Indexer.exe")) { throw "Indexer が同梱されていません" }
-          New-Item -ItemType Directory -Force dist | Out-Null
-          $notice = @"
-          FileBox 開発プレビュー（$env:GITHUB_SHA）
-          これは開発中の試作版です。製品版ではありません。大切なデータで使う前にバックアップを取ってください。
-          起動: FileBox.exe（.NET 8 デスクトップ ランタイムが必要です）
-          "@
-          Set-Content -Path "$out/PREVIEW.txt" -Value $notice -Encoding utf8
-          Compress-Archive -Path "$out/*" -DestinationPath "dist/FileBox-preview-win-x64.zip" -Force
+        run: ./scripts/Package-Preview.ps1 -SkipBuild
 
-      - name: 成果物としてアップロード
+      - name: 配布ファイルを保存
+        id: artifact
         uses: actions/upload-artifact@v4
         with:
           name: FileBox-preview-win-x64
-          path: dist/FileBox-preview-win-x64.zip
+          path: |
+            dist/FileBox-Setup.exe
+            dist/FileBox-Setup.exe.sha256
+            dist/FileBox-preview-win-x64.zip
+            dist/FileBox-preview-win-x64.zip.sha256
+          if-no-files-found: error
           retention-days: 30
 
-      - name: プレビュー版を更新（main のみ）
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: 検証結果と成果物への案内
+        shell: pwsh
+        env:
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+        run: |
+          @"
+          ## Windows x64 版の作成が完了しました
+          - 単体テスト・本体のビルド・ZIP の同梱検証・ダウンローダーの作成に成功しました。
+          - [この実行の成果物]($env:ARTIFACT_URL)（開発・検証向け。GitHub ログインが必要です）
+          - main の配布では、次のジョブで [開発プレビューの配布ページ](https://github.com/miki-826/FileBox/releases/tag/preview) を更新します。
+          "@ >> $env:GITHUB_STEP_SUMMARY
+
+  release:
+    name: ダウンロードページの更新
+    needs: build
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FileBox-preview-win-x64
+          path: dist
+
+      - name: 開発プレビューのタグとページを更新
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const repo = context.repo;
+            // 固定の preview タグだけを更新する。製品版のリリースは作らない。
+            try {
+              await github.rest.git.updateRef({...repo, ref: 'tags/preview', sha: context.sha, force: true});
+            } catch (error) {
+              if (error.status !== 404 && error.status !== 422) throw error;
+              await github.rest.git.createRef({...repo, ref: 'refs/tags/preview', sha: context.sha});
+            }
+            const body = fs.readFileSync('scripts/Release-Notes.md', 'utf8') +
+              `\n\nビルド元: [${context.sha.slice(0, 7)}](https://github.com/${repo.owner}/${repo.repo}/commit/${context.sha})\n`;
+            const fields = {...repo, tag_name: 'preview', name: 'FileBox 開発プレビュー（Windows x64）', body, prerelease: true, make_latest: 'false'};
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({...repo, tag: 'preview'})).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (release) await github.rest.repos.updateRelease({...fields, release_id: release.id});
+            else await github.rest.repos.createRelease(fields);
+
+      - name: EXE・ZIP・確認用ハッシュを公開
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 「preview」タグのプレリリースを最新の main で作り直す（製品版としては公開しない）
-          gh release delete preview --yes --cleanup-tag 2>$null
-          gh release create preview dist/FileBox-preview-win-x64.zip `
-            --prerelease `
-            --target $env:GITHUB_SHA `
-            --title "開発プレビュー（製品版ではありません）" `
-            --notes "main の最新コミット ($env:GITHUB_SHA) から自動で作った試作版です。製品版ではありません。動作は保証されません。"
+          gh release upload preview dist/FileBox-Setup.exe dist/FileBox-Setup.exe.sha256 dist/FileBox-preview-win-x64.zip dist/FileBox-preview-win-x64.zip.sha256 --clobber
+          if ($LASTEXITCODE -ne 0) { throw '配布ファイルの公開に失敗しました。' }
+
+      - name: ダウンロードリンクを表示
+        shell: pwsh
+        run: |
+          Get-Content scripts/Release-Notes.md -Raw >> $env:GITHUB_STEP_SUMMARY

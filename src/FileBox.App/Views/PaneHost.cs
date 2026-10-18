@@ -126,7 +126,7 @@ public sealed class PaneHost : Grid
         };
         title.SetBinding(TextBlock.TextProperty, new Microsoft.UI.Xaml.Data.Binding { Source = pane, Path = new PropertyPath(nameof(PaneViewModel.Title)) });
 
-        var header = new Grid { Padding = new Thickness(10, 2, 2, 2), ColumnSpacing = 2 };
+        var header = new Grid { Padding = new Thickness(12, 6, 6, 6), ColumnSpacing = 6 };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(title);
@@ -147,9 +147,9 @@ public sealed class PaneHost : Grid
         var frame = new Border
         {
             Child = body,
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = new CornerRadius(10),
             BorderThickness = new Thickness(1),
-            Margin = new Thickness(2),
+            Margin = new Thickness(2, 6, 2, 2),
             Background = (Brush)Application.Current.Resources["LayerFillColorDefaultBrush"],
             Tag = pane,
         };
@@ -177,7 +177,11 @@ public sealed class PaneHost : Grid
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
             Padding = new Thickness(6, 4, 6, 4),
+            MinWidth = 32,
+            MinHeight = 32,
+            CornerRadius = new CornerRadius(6),
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, tip);
         ToolTipService.SetToolTip(b, tip);
         b.Click += (_, _) => action();
         return b;

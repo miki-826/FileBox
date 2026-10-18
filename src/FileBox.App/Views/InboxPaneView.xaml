@@ -8,34 +8,35 @@
 
     <UserControl.Resources>
         <Style x:Key="InboxItem" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
-            <Setter Property="MinHeight" Value="56" />
-            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinHeight" Value="90" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         </Style>
     </UserControl.Resources>
 
     <Grid RowDefinitions="Auto,*">
-        <Grid Padding="12,8" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+        <Grid Padding="16,14" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
             <FontIcon Glyph="&#xE896;" FontSize="16" />
-            <StackPanel Grid.Column="1">
+            <StackPanel Grid.Column="1" Spacing="4">
                 <TextBlock Text="受け取りボックス" FontWeight="SemiBold" />
                 <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
-                <Button Click="MoveAll_Click" ToolTipService.ToolTip="確信度「高」とルール一致の項目を推奨先へまとめて移動">
+                <Button Click="MoveAll_Click" Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="確信度「高」とルール一致の項目を推奨先へまとめて移動" ToolTipService.ToolTip="確信度「高」とルール一致の項目を推奨先へまとめて移動">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE8DE;" FontSize="14" />
                         <TextBlock Text="まとめて振り分け" />
                     </StackPanel>
                 </Button>
-                <Button Click="Settings_Click" ToolTipService.ToolTip="監視フォルダと振り分けルール">
+                <Button Click="Settings_Click" AutomationProperties.Name="監視フォルダと振り分けルール" ToolTipService.ToolTip="監視フォルダと振り分けルール">
                     <FontIcon Glyph="&#xE713;" FontSize="14" />
                 </Button>
             </StackPanel>
         </Grid>
 
-        <ListView x:Name="List" Grid.Row="1"
+        <ListView x:Name="List" Grid.Row="1" Margin="4,6,4,0" AutomationProperties.Name="振り分け待ちのファイル一覧"
                   ItemsSource="{x:Bind ViewModel.Items}"
                   SelectionMode="Single"
                   ItemContainerStyle="{StaticResource InboxItem}"
@@ -45,26 +46,26 @@
                 <DataTemplate x:DataType="services:InboxItem">
                     <Grid ColumnDefinitions="28,*,Auto" ColumnSpacing="8">
                         <FontIcon Glyph="{x:Bind Glyph}" FontSize="18" HorizontalAlignment="Left" VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                            <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{x:Bind Detail}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
+                            <TextBlock Text="{x:Bind Detail}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Detail}" />
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,2,0,0">
                                 <Border CornerRadius="4" Padding="5,0" VerticalAlignment="Center"
                                         Background="{x:Bind views:InboxPaneView.BadgeBrush(Confidence, HasTarget), Mode=OneWay}"
                                         Visibility="{x:Bind views:Converters.Visible(HasTarget), Mode=OneWay}">
-                                    <TextBlock Text="{x:Bind ConfidenceText, Mode=OneWay}" FontSize="10" Foreground="White" />
+                                    <TextBlock Text="{x:Bind ConfidenceText, Mode=OneWay}" FontSize="12" Foreground="White" />
                                 </Border>
-                                <TextBlock Text="{x:Bind TargetText, Mode=OneWay}" FontSize="12" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{x:Bind ReasonText, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{x:Bind TargetText, Mode=OneWay}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind TargetText, Mode=OneWay}" />
+                            </Grid>
+                            <TextBlock Text="{x:Bind ReasonText, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <Button Content="移動" Click="Move_Click" Style="{StaticResource AccentButtonStyle}"
-                                    IsEnabled="{x:Bind HasTarget, Mode=OneWay}" ToolTipService.ToolTip="推奨先へ移動" />
-                            <Button Click="Choose_Click" ToolTipService.ToolTip="ほかの候補・新しいフォルダ・ルール化">
+                                    IsEnabled="{x:Bind HasTarget, Mode=OneWay}" AutomationProperties.Name="推奨先へ移動" ToolTipService.ToolTip="推奨先へ移動" />
+                            <Button Click="Choose_Click" AutomationProperties.Name="ほかの候補・新しいフォルダ・ルール化" ToolTipService.ToolTip="ほかの候補・新しいフォルダ・ルール化">
                                 <FontIcon Glyph="&#xE712;" FontSize="14" />
                             </Button>
-                            <Button Click="Dismiss_Click" ToolTipService.ToolTip="このままにする（一覧から外す）">
+                            <Button Click="Dismiss_Click" AutomationProperties.Name="このままにする（一覧から外す）" ToolTipService.ToolTip="このままにする（一覧から外す）">
                                 <FontIcon Glyph="&#xE711;" FontSize="12" />
                             </Button>
                         </StackPanel>
@@ -75,6 +76,6 @@
 
         <TextBlock Grid.Row="1" Text="新しく届いたファイルはここに表示され、置き場所を提案します。"
                    Visibility="{x:Bind views:InboxPaneView.EmptyVisibility(ViewModel.Summary), Mode=OneWay}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                   HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="32" MaxWidth="360" />
     </Grid>
 </UserControl>

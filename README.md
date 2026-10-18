@@ -14,12 +14,27 @@ Windows のエクスプローラーの代わりに使うことを目指したフ
 - **容量制限**: フォルダごとの上限（クォータ）と、容量の内訳・大きいファイルの表示
 - **アカウント・権限**: Windows のサインインをそのまま使用（ログイン画面なし）。ロール・フォルダ権限・ユーザー別容量・監査ログ
 
-## ダウンロード（試作版）
-- [Releases の「開発プレビュー」](../../releases/tag/preview) から `FileBox-preview-win-x64.zip` を取得
-  - main ブランチへの push のたびに GitHub Actions が自動で作り直します（[build ワークフロー](../../actions/workflows/build.yml)）
-- zip を展開して `FileBox.exe` を起動します
-- 必要なもの: Windows 10 1809 以降 / 11（x64）、[.NET 8 デスクトップ ランタイム](https://dotnet.microsoft.com/download/dotnet/8.0)
-- 署名していないため、初回起動時に SmartScreen の警告が出ることがあります
+## ダウンロード（開発プレビュー）
+
+### [⬇ FileBox-Setup.exe をダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Setup.exe)
+
+1. **FileBox-Setup.exe** を実行すると、最新版のダウンロードが始まります。
+2. 進捗画面で取得・展開が完了するまで待ちます。
+3. **「FileBox を起動」**を押してください。
+
+Windows 10 1809 以降 / Windows 11（x64）に対応。必要な .NET 8 と Windows App SDK は本体に同梱しているため、別途インストールする必要はありません。
+
+- [配布ページ・使い方](https://github.com/miki-826/FileBox/releases/tag/preview)
+- [本体 ZIP を直接ダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip)（手動で展開する方向け）
+- [EXE の SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Setup.exe.sha256) / [ZIP の SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip.sha256)
+
+EXE は GitHub から本体を取得し、`%LOCALAPPDATA%\Programs\FileBox\preview-…\app` に展開します。「保存先を開く」で場所を確認できます。通信エラーは「再試行」でやり直せます。既存の本体とユーザー設定は上書きしません。
+
+ZIP 版はすべて展開して `FileBox.exe` を起動してください。`indexer` フォルダも必要です。上書き更新する場合は `FileBox` と `FileBox.Indexer` を終了してください。署名していないため、Windows が発行元を確認できない旨を表示する場合があります。
+
+main への push または main 上での手動実行で、[GitHub Actions](https://github.com/miki-826/FileBox/actions/workflows/build.yml) がテスト・ビルド・検証後に **preview プレリリース**を更新します。上記のダウンロードリンクは固定です。Actions の実行結果にもダウンロード案内を表示します。
+
+配布用ファイルを手元で作るには `./scripts/Package-Preview.ps1` を実行します。`dist/` にダウンロード用 EXE、本体 ZIP、それぞれの SHA-256 を出力します。
 
 ### 注意
 - エクスプローラーの置き換え（設定）は既定でオフです。オンにすると現在のユーザーのレジストリ（HKCU）を変更し、オフで元に戻ります

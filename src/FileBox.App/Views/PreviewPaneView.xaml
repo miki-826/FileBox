@@ -4,10 +4,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid RowDefinitions="Auto,*">
-        <Grid Padding="12,8" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+        <Grid Padding="16,14" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
             <FontIcon x:Name="HeaderIcon" Glyph="&#xE8A1;" FontSize="16" />
-            <StackPanel Grid.Column="1">
+            <StackPanel Grid.Column="1" Spacing="4">
                 <TextBlock x:Name="HeaderName" Text="ファイルを選択するとここに表示されます" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />
                 <TextBlock x:Name="HeaderDetail" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
             </StackPanel>

@@ -18,7 +18,7 @@ public static class SettingsDialog
         var store = Store ?? throw new InvalidOperationException("SettingsDialog.Store が未設定");
         var explorer = ExplorerIntegration.Instance;
         var links = LinkService.Instance;
-        var panel = new StackPanel { Spacing = 6, MinWidth = 520 };
+        var panel = new StackPanel { Spacing = 16, MinWidth = 520, Padding = new Thickness(0, 0, 12, 12) };
 
         // ---- エクスプローラー置き換え（02_機能設計 §7）
         panel.Children.Add(Header("エクスプローラーの代わりに使う"));
@@ -84,7 +84,7 @@ public static class SettingsDialog
     static ToggleSwitch Toggle(string header, bool on, string? description = null)
     {
         var toggle = new ToggleSwitch { IsOn = on, OnContent = "オン", OffContent = "オフ" };
-        var head = new StackPanel();
+        var head = new StackPanel { Spacing = 4 };
         head.Children.Add(new TextBlock { Text = header, TextWrapping = TextWrapping.Wrap });
         if (description != null)
             head.Children.Add(new TextBlock
