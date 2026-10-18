@@ -1,0 +1,67 @@
+# テストを実行し、Windows 用の実行ファイル一式（zip）を作る。
+# 開発プレビュー: main への push で「preview」プレリリースを作り直す（正式リリースではない）。
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # プレリリースの更新に必要
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: テスト
+        run: dotnet test FileBox.sln -c Release
+
+      - name: アプリをビルド（x64）
+        run: dotnet build src/FileBox.App -c Release -p:Platform=x64
+
+      - name: zip にまとめる
+        shell: pwsh
+        run: |
+          $out = "src/FileBox.App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64"
+          if (-not (Test-Path "$out/FileBox.exe")) { throw "FileBox.exe が見つかりません: $out" }
+          if (-not (Test-Path "$out/indexer/FileBox.Indexer.exe")) { throw "Indexer が同梱されていません" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $notice = @"
+          FileBox 開発プレビュー（$env:GITHUB_SHA）
+          これは開発中の試作版です。製品版ではありません。大切なデータで使う前にバックアップを取ってください。
+          起動: FileBox.exe（.NET 8 デスクトップ ランタイムが必要です）
+          "@
+          Set-Content -Path "$out/PREVIEW.txt" -Value $notice -Encoding utf8
+          Compress-Archive -Path "$out/*" -DestinationPath "dist/FileBox-preview-win-x64.zip" -Force
+
+      - name: 成果物としてアップロード
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileBox-preview-win-x64
+          path: dist/FileBox-preview-win-x64.zip
+          retention-days: 30
+
+      - name: プレビュー版を更新（main のみ）
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 「preview」タグのプレリリースを最新の main で作り直す（製品版としては公開しない）
+          gh release delete preview --yes --cleanup-tag 2>$null
+          gh release create preview dist/FileBox-preview-win-x64.zip `
+            --prerelease `
+            --target $env:GITHUB_SHA `
+            --title "開発プレビュー（製品版ではありません）" `
+            --notes "main の最新コミット ($env:GITHUB_SHA) から自動で作った試作版です。製品版ではありません。動作は保証されません。"
