@@ -34,6 +34,8 @@ ZIP 版はすべて展開して `FileBox.exe` を起動してください。`ind
 
 main への push または main 上での手動実行で、[GitHub Actions](https://github.com/miki-826/FileBox/actions/workflows/build.yml) がテスト・ビルド・検証後に **preview プレリリース**を更新します。上記のダウンロードリンクは固定です。Actions の実行結果にもダウンロード案内を表示します。
 
+Actions で手動作成する場合は、上のリンクで **Run workflow → main → Run workflow** を選びます。**「テスト・Windows 版の作成」→「インストーラー EXE の作成」→「ダウンロードページの更新」**の順に実行します。実行ページの Artifacts にある **FileBox-Installer-Windows-x64** からも取得できます（成果物のダウンロードには GitHub ログインが必要です）。一般配布には上記の直接ダウンロードリンクを使ってください。
+
 配布用ファイルを手元で作るには `./scripts/Package-Preview.ps1` を実行します。`dist/` にダウンロード用 EXE、本体 ZIP、それぞれの SHA-256 を出力します。
 
 ### 注意

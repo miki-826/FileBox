@@ -1,5 +1,5 @@
 # ローカルと GitHub Actions で同じ開発プレビュー ZIP を作る。
-param([switch]$SkipBuild)
+param([switch]$SkipBuild, [switch]$SkipSetup)
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -59,6 +59,6 @@ FileBox 開発プレビュー（ビルド元: $revision）
     } finally { $archive.Dispose() }
     $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -LiteralPath "$zip.sha256" -Value "$hash  FileBox-preview-win-x64.zip" -Encoding ascii
-    & (Join-Path $PSScriptRoot 'Build-Setup.ps1')
+    if (-not $SkipSetup) { & (Join-Path $PSScriptRoot 'Build-Setup.ps1') }
     Write-Host "配布用 ZIP: $zip"
 } finally { Pop-Location }
