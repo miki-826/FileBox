@@ -10,6 +10,12 @@ Windows 10 1809 以降 / Windows 11 の x64 用です。必要な .NET 8 と Win
 
 保存先は `%LOCALAPPDATA%\Programs\FileBox\preview-…\app` です。「保存先を開く」から確認できます。更新時も既存の本体やユーザー設定を上書きしません。
 
+### 本体同梱のインストーラー
+
+[FileBox-Installer-preview-win-x64.exe をダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe)（[SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe.sha256)）
+
+本体を同梱しているため、導入時にインターネット接続は不要です。`%LOCALAPPDATA%\Programs\FileBox\installed` に入り、スタートメニューに登録されます。管理者権限は不要で、Windows の「設定 → アプリ」からアンインストールできます（ユーザー設定は残ります）。
+
 ### ZIP で取得する場合
 
 [本体 ZIP を直接ダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip) → すべて展開し、`FileBox.exe` を起動してください。`indexer` フォルダも必要です。

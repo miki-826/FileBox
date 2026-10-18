@@ -66,9 +66,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: FileBox-App-Windows-x64
+          path: dist
+
       - name: FileBox-Setup.exe をコンパイル
         shell: pwsh
         run: ./scripts/Build-Setup.ps1
+
+      - name: 本体同梱のインストーラーを作成（Inno Setup）
+        shell: pwsh
+        run: |
+          # 検証済みの本体 ZIP を展開して、そのままインストーラーに入れる
+          Expand-Archive -LiteralPath dist/FileBox-preview-win-x64.zip -DestinationPath dist/app -Force
+          ./scripts/Build-Installer.ps1 -SourceDir dist/app
 
       - name: インストーラーを保存
         id: installer-artifact
@@ -78,6 +90,8 @@ jobs:
           path: |
             dist/FileBox-Setup.exe
             dist/FileBox-Setup.exe.sha256
+            dist/FileBox-Installer-preview-win-x64.exe
+            dist/FileBox-Installer-preview-win-x64.exe.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -89,8 +103,9 @@ jobs:
           @"
           ## インストーラー EXE を作成しました
           - [この実行のインストーラー]($env:INSTALLER_ARTIFACT_URL)（GitHub ログインが必要です）
-          - 成果物を展開し、FileBox-Setup.exe を実行すると本体のダウンロードが始まります。
-          - main からの公開後は [FileBox-Setup.exe を直接ダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Setup.exe) できます。
+          - FileBox-Installer-preview-win-x64.exe は本体を同梱したインストーラーです（オフラインで導入でき、アンインストールにも対応）。
+          - FileBox-Setup.exe は実行時に本体をダウンロードする小さなダウンローダーです。
+          - main からの公開後は [インストーラーを直接ダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe) できます。
           "@ >> $env:GITHUB_STEP_SUMMARY
 
   release:
@@ -141,7 +156,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload preview dist/FileBox-Setup.exe dist/FileBox-Setup.exe.sha256 dist/FileBox-preview-win-x64.zip dist/FileBox-preview-win-x64.zip.sha256 --clobber
+          gh release upload preview dist/FileBox-Installer-preview-win-x64.exe dist/FileBox-Installer-preview-win-x64.exe.sha256 dist/FileBox-Setup.exe dist/FileBox-Setup.exe.sha256 dist/FileBox-preview-win-x64.zip dist/FileBox-preview-win-x64.zip.sha256 --clobber
           if ($LASTEXITCODE -ne 0) { throw '配布ファイルの公開に失敗しました。' }
 
       - name: ダウンロードリンクを表示

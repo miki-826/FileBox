@@ -24,6 +24,8 @@ Windows のエクスプローラーの代わりに使うことを目指したフ
 
 Windows 10 1809 以降 / Windows 11（x64）に対応。必要な .NET 8 と Windows App SDK は本体に同梱しているため、別途インストールする必要はありません。
 
+**本体同梱のインストーラー**: [FileBox-Installer-preview-win-x64.exe](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe)（オフラインで導入でき、スタートメニューへの登録と「アプリ」からのアンインストールに対応。管理者権限は不要。[SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe.sha256)）
+
 - [配布ページ・使い方](https://github.com/miki-826/FileBox/releases/tag/preview)
 - [本体 ZIP を直接ダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip)（手動で展開する方向け）
 - [EXE の SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Setup.exe.sha256) / [ZIP の SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip.sha256)
@@ -36,7 +38,7 @@ main への push または main 上での手動実行で、[GitHub Actions](http
 
 Actions で手動作成する場合は、上のリンクで **Run workflow → main → Run workflow** を選びます。**「テスト・Windows 版の作成」→「インストーラー EXE の作成」→「ダウンロードページの更新」**の順に実行します。実行ページの Artifacts にある **FileBox-Installer-Windows-x64** からも取得できます（成果物のダウンロードには GitHub ログインが必要です）。一般配布には上記の直接ダウンロードリンクを使ってください。
 
-配布用ファイルを手元で作るには `./scripts/Package-Preview.ps1` を実行します。`dist/` にダウンロード用 EXE、本体 ZIP、それぞれの SHA-256 を出力します。
+配布用ファイルを手元で作るには `./scripts/Package-Preview.ps1` を実行します。`dist/` にダウンロード用 EXE、本体 ZIP、それぞれの SHA-256 を出力します。本体同梱のインストーラーは [Inno Setup 6](https://jrsoftware.org/isinfo.php) を入れたうえで `./scripts/Build-Installer.ps1` を実行すると `dist/` に作成されます。
 
 ### 注意
 - エクスプローラーの置き換え（設定）は既定でオフです。オンにすると現在のユーザーのレジストリ（HKCU）を変更し、オフで元に戻ります
