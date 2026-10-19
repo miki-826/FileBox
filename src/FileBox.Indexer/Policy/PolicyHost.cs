@@ -127,7 +127,16 @@ public sealed class PolicyHost : IDisposable
                 if (user != null) RecordOwners(user.Id, PolicyMethods.FromNode<List<string>>(args) ?? new());
                 return null;
             case PolicyMethods.Usage:
-                return PolicyMethods.ToNode(_index.Usage(PolicyMethods.FromNode<string>(args) ?? "", 100));
+            {
+                string path = PolicyMethods.FromNode<string>(args) ?? "";
+                long roleId = user?.RoleId ?? (long.TryParse(_store.GetSetting("defaultRole"), out long defaultRole) ? defaultRole : SystemStore.StandardRole);
+                var role = _store.GetRole(roleId);
+                var flags = user?.IsDisabled == true ? Permission.Read : role?.DefaultFlags ?? Permission.Read;
+                var rules = _store.GetPermissions().Select(p => p.Rule).ToList();
+                if (!PolicyEvaluator.Effective(path, user?.Id ?? 0, roleId, flags, rules).HasFlag(Permission.Read))
+                    throw new UnauthorizedAccessException("この場所の容量を表示する権限がありません。");
+                return PolicyMethods.ToNode(_index.Usage(path, 100));
+            }
         }
 
         // ---- ここから管理者のみ（system.db の役割で判定。Windows 管理者かどうかではない）

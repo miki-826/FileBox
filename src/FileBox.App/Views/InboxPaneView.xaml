@@ -16,15 +16,16 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*">
         <Grid Padding="16,14" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
             <FontIcon Glyph="&#xE896;" FontSize="20" Foreground="#30A46C" />
             <StackPanel Grid.Column="1" Spacing="4">
-                <TextBlock Text="受け取りボックス" FontWeight="SemiBold" />
+                <TextBlock Text="ダウンロードの整理" FontWeight="SemiBold" />
                 <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                <Button Content="ダウンロードを開く" Click="OpenDownloads_Click" />
                 <Button Click="MoveAll_Click" Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="確信度「高」とルール一致の項目を推奨先へまとめて移動" ToolTipService.ToolTip="確信度「高」とルール一致の項目を推奨先へまとめて移動">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE8DE;" FontSize="14" />
@@ -37,7 +38,12 @@
             </StackPanel>
         </Grid>
 
-        <ListView x:Name="List" Grid.Row="1" Margin="4,6,4,0" AutomationProperties.Name="振り分け待ちのファイル一覧"
+        <StackPanel Grid.Row="1" Spacing="4" Margin="16,10">
+            <TextBlock Text="新着ファイルに保存先を提案します。移動は操作したときだけ行います（自動移動ルールを除く）。" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="SourcesLabel" Text="{x:Bind SourcesText}" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+
+        <ListView x:Name="List" Grid.Row="2" Margin="4,6,4,0" AutomationProperties.Name="振り分け待ちのファイル一覧"
                   SelectionMode="Single"
                   ItemContainerStyle="{StaticResource InboxItem}"
                   DoubleTapped="List_DoubleTapped"
@@ -90,7 +96,7 @@
             </ListView.ItemTemplate>
         </ListView>
 
-        <TextBlock Grid.Row="1" Text="新しく届いたファイルはここに表示され、置き場所を提案します。"
+        <TextBlock Grid.Row="2" Text="新しく届いたファイルはここに表示され、置き場所を提案します。"
                    Visibility="{x:Bind views:InboxPaneView.EmptyVisibility(ViewModel.Summary), Mode=OneWay}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="32" MaxWidth="360" />
     </Grid>

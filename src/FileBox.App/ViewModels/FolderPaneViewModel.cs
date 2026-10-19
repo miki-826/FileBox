@@ -18,6 +18,7 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
     FileSystemWatcher? _watcher;
     DispatcherQueueTimer? _reloadTimer;
     CancellationTokenSource? _loadCts;
+    IReadOnlyList<FileItem> _selection = Array.Empty<FileItem>();
 
     public override PaneKind Kind => PaneKind.Folder;
 
@@ -167,9 +168,11 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
         {
             var list = await Task.Run(() => Enumerate(path, sort, desc), cts.Token);
             if (cts.IsCancellationRequested) return;
+            foreach (var folder in list.Where(i => i.IsDirectory && !i.IsDrive)) folder.SetFolderSize(null, state: "集計中…");
             Items = new ObservableCollection<FileItem>(list);
             UpdateStatus(0, 0);
             ItemsReloaded?.Invoke();
+            if (path.Length > 0) _ = LoadFolderSizesAsync(path, list, cts.Token);
         }
         catch (OperationCanceledException) { }
         catch (UnauthorizedAccessException) { ErrorText = "このフォルダにアクセスする権限がありません"; Items = new(); }
@@ -177,6 +180,34 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
         finally
         {
             if (_loadCts == cts) IsLoading = false;
+        }
+    }
+
+    async Task LoadFolderSizesAsync(string path, List<FileItem> items, CancellationToken cancellation)
+    {
+        var folders = items.Where(i => i.IsDirectory && !i.IsDrive).ToList();
+        if (folders.Count == 0) return;
+        try
+        {
+            var report = await FolderUsageService.ReadAsync(path, cancellation);
+            if (cancellation.IsCancellationRequested) return;
+            var sizes = report.Children.Where(i => i.IsDirectory).ToDictionary(i => i.Path.TrimEnd('\\'), StringComparer.OrdinalIgnoreCase);
+            foreach (var folder in folders)
+            {
+                if (sizes.TryGetValue(folder.FullPath.TrimEnd('\\'), out var size)) folder.SetFolderSize(size.Size, size.IsPartial);
+                else folder.SetFolderSize(null, state: "未集計");
+            }
+            OnSelectionChanged(_selection.Where(Items.Contains).ToList());
+            if (Sort == SortColumn.Size)
+            {
+                Items = new ObservableCollection<FileItem>(SortItems(Items, Sort, SortDescending));
+                ItemsReloaded?.Invoke();
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception)
+        {
+            if (!cancellation.IsCancellationRequested) foreach (var folder in folders) folder.SetFolderSize(null, state: "取得不可");
         }
     }
 
@@ -219,7 +250,7 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
         {
             SortColumn.Modified => desc ? ordered.ThenByDescending(i => i.Modified) : ordered.ThenBy(i => i.Modified),
             SortColumn.Type => desc ? ordered.ThenByDescending(i => i.Extension) : ordered.ThenBy(i => i.Extension),
-            SortColumn.Size => desc ? ordered.ThenByDescending(i => i.Size) : ordered.ThenBy(i => i.Size),
+            SortColumn.Size => desc ? ordered.ThenByDescending(i => i.SortSize) : ordered.ThenBy(i => i.SortSize),
             _ => desc ? ordered.ThenByDescending(i => i.Name, NaturalComparer.Instance) : ordered.ThenBy(i => i.Name, NaturalComparer.Instance),
         };
         return ordered.ToList();
@@ -239,7 +270,8 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
 
     public void OnSelectionChanged(IReadOnlyList<FileItem> selected)
     {
-        UpdateStatus(selected.Count, selected.Where(s => !s.IsDirectory).Sum(s => s.Size));
+        _selection = selected.ToList();
+        UpdateStatus(selected.Count, selected.Where(s => !s.IsDrive).Sum(s => s.IsDirectory ? s.FolderBytes ?? 0 : s.Size));
         RaiseSelectionChanged(selected.Count == 1 ? selected[0] : null);
     }
 

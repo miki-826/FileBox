@@ -14,7 +14,7 @@ public sealed partial class FileIndex
         try
         {
             int root = ResolveCore(path);
-            return root < 0 ? -1 : SumCore(root, null);
+            return root < 0 ? -1 : SumCore(root, null, 0, out _, out _, out _);
         }
         finally { _lock.ExitReadLock(); }
     }
@@ -35,24 +35,31 @@ public sealed partial class FileIndex
                 {
                     if ((_flags[c] & EntryFlags.Deleted) != 0) continue;
                     bool dir = (_flags[c] & EntryFlags.Directory) != 0;
-                    long size = dir ? SumCore(c, largest, top) : _sizes[c];
+                    long files = 1, folders = 0;
+                    bool partial = (_flags[c] & EntryFlags.MetaMissing) != 0;
+                    long size = dir ? SumCore(c, largest, top, out files, out folders, out partial) : _sizes[c];
                     if (!dir) Offer(largest, c, top);
-                    report.Children.Add(new UsageItem { Path = GetPathCore(c), IsDirectory = dir, Size = size, Modified = LocalTime(_mtimes[c]) });
+                    report.Children.Add(new UsageItem { Path = GetPathCore(c), IsDirectory = dir, Size = size, Modified = LocalTime(_mtimes[c]), IsPartial = partial });
                     report.Total += size;
+                    report.FileCount += files;
+                    report.FolderCount += folders + (dir ? 1 : 0);
+                    report.IsPartial |= partial;
                 }
             }
             report.Children.Sort((a, b) => b.Size.CompareTo(a.Size));
             var list = new List<int>();
             while (largest.Count > 0) list.Add(largest.Dequeue());
             list.Reverse();
-            report.Largest = list.Select(id => new UsageItem { Path = GetPathCore(id), Size = _sizes[id], Modified = LocalTime(_mtimes[id]) }).ToList();
+            report.Largest = list.Select(id => new UsageItem { Path = GetPathCore(id), Size = _sizes[id], Modified = LocalTime(_mtimes[id]), IsPartial = (_flags[id] & EntryFlags.MetaMissing) != 0 }).ToList();
             return report;
         }
         finally { _lock.ExitReadLock(); }
     }
 
-    long SumCore(int root, PriorityQueue<int, long>? largest, int top = 0)
+    long SumCore(int root, PriorityQueue<int, long>? largest, int top, out long files, out long folders, out bool partial)
     {
+        files = folders = 0;
+        partial = false;
         long total = 0;
         var stack = new Stack<int>();
         stack.Push(root);
@@ -64,9 +71,11 @@ public sealed partial class FileIndex
             {
                 var f = _flags[c];
                 if ((f & EntryFlags.Deleted) != 0) continue;
-                if ((f & EntryFlags.Directory) != 0) stack.Push(c);
+                if ((f & EntryFlags.Directory) != 0) { folders++; stack.Push(c); }
                 else
                 {
+                    files++;
+                    partial |= (f & EntryFlags.MetaMissing) != 0;
                     total += _sizes[c];
                     if (largest != null) Offer(largest, c, top);
                 }

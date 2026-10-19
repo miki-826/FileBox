@@ -15,4 +15,5 @@ public interface IWorkspaceActions
     /// <summary>タブ内のフォルダ区画で path を開く（ファイルなら親フォルダを開いて選択）。</summary>
     void RevealInFolderPane(PaneViewModel from, string path);
     void AddFavorite(string path);
+    void OpenInbox();
 }

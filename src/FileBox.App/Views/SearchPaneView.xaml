@@ -48,7 +48,7 @@
                             <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
                             <TextBlock Text="{x:Bind Location}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Location}" />
                         </StackPanel>
-                        <TextBlock Grid.Column="2" Text="{x:Bind HumanSize}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind HumanSize, Mode=OneWay}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <TextBlock Grid.Column="3" Text="{x:Bind ModifiedText}" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </Grid>
                 </DataTemplate>

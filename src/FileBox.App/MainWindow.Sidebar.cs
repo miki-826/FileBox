@@ -32,7 +32,8 @@ public sealed partial class MainWindow
             {
                 selected = list.Items.OfType<SidebarItem>().FirstOrDefault(item => active switch
                 {
-                    InboxPaneViewModel => item.Kind == SidebarKind.Inbox,
+                    InboxPaneViewModel => item.Kind == SidebarKind.Folder && string.Equals(item.Path.TrimEnd('\\'),
+                        ShellService.KnownFolder(ShellService.QuickAccess[2].Id)?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase),
                     ShellPaneViewModel shell => item.Kind == SidebarKind.Shell && item.Path == shell.Location,
                     SearchPaneViewModel search => item.Kind == SidebarKind.SavedSearch && item.Query == search.Query,
                     FolderPaneViewModel folder => item.Kind is SidebarKind.Folder or SidebarKind.Favorite or SidebarKind.Recent or SidebarKind.Drive

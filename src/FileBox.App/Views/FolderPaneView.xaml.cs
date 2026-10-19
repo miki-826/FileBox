@@ -50,12 +50,14 @@ public sealed partial class FolderPaneView : UserControl
     /// </summary>
     void ApplyItems()
     {
+        var selectedPaths = List.SelectedItems.OfType<FileItem>().Select(i => i.FullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
         bool grouped = !ViewModel.IsPc && ViewPreferences.GroupByDate(ViewModel.CurrentPath);
         GroupButton.IsChecked = grouped;
         GroupButton.IsEnabled = !ViewModel.IsPc;
         if (!grouped)
         {
             List.ItemsSource = ViewModel.Items;
+            RestoreSelection();
             return;
         }
         var now = DateTime.Now;
@@ -66,6 +68,12 @@ public sealed partial class FolderPaneView : UserControl
             .Select(g => new ItemGroup($"{DateGroup.Label(g.Key)}（{g.Count()}）", g))
             .ToList();
         List.ItemsSource = new CollectionViewSource { IsSourceGrouped = true, Source = groups }.View;
+        RestoreSelection();
+        void RestoreSelection()
+        {
+            foreach (var item in ViewModel.Items.Where(i => selectedPaths.Contains(i.FullPath)))
+                if (!List.SelectedItems.Contains(item)) List.SelectedItems.Add(item);
+        }
     }
 
     void Group_Click(object sender, RoutedEventArgs e)
@@ -93,6 +101,9 @@ public sealed partial class FolderPaneView : UserControl
         TypeHeader.Content = "種類" + (ViewModel.Sort == SortColumn.Type ? arrow : "");
         SizeHeader.Content = "サイズ" + (ViewModel.Sort == SortColumn.Size ? arrow : "");
         UpdateCommandButtons();
+        string? downloads = ShellService.KnownFolder(ShellService.QuickAccess[2].Id);
+        OrganizeButton.Visibility = downloads != null && string.Equals(downloads.TrimEnd('\\'), ViewModel.CurrentPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void UpdateCommandButtons()
@@ -121,6 +132,7 @@ public sealed partial class FolderPaneView : UserControl
         if (Selected is { Count: 1 } items && !items[0].IsDrive) await RenameAsync(items[0]);
     }
     void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
+    void Organize_Click(object sender, RoutedEventArgs e) => _actions.OpenInbox();
 
     void OnItemsReloaded()
     {

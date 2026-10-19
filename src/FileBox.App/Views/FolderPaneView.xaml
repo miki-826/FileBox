@@ -81,6 +81,7 @@
             <AppBarButton x:Name="DeleteButton" Label="削除" Icon="Delete" Click="Delete_Click" ToolTipService.ToolTip="ごみ箱へ移動 (Delete)" />
             <AppBarSeparator />
             <AppBarToggleButton x:Name="GroupButton" Label="日付でまとめる" Icon="Calendar" Click="Group_Click" />
+            <AppBarButton x:Name="OrganizeButton" Label="整理の提案" Icon="MoveToFolder" Click="Organize_Click" Visibility="Collapsed" ToolTipService.ToolTip="ダウンロードのファイルに保存先を提案" />
             <AppBarButton Label="プレビュー" Icon="Preview" Click="Preview_Click" ToolTipService.ToolTip="プレビューと詳細 (Space)" />
         </CommandBar>
 
@@ -137,7 +138,7 @@
                             </StackPanel>
                             <TextBlock Grid.Column="2" Text="{x:Bind ModifiedText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
                             <TextBlock Grid.Column="3" Text="{x:Bind TypeText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Column="4" Text="{x:Bind SizeText}" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+                            <TextBlock Grid.Column="4" Text="{x:Bind SizeText, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind SizeDescription, Mode=OneWay}" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>

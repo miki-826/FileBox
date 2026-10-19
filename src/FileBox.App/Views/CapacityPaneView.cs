@@ -17,6 +17,8 @@ public sealed class CapacityPaneView : UserControl
     readonly IWorkspaceActions _actions;
     readonly StackPanel _body = new() { Spacing = 12, Padding = new Thickness(16, 12, 16, 20) };
     readonly ProgressRing _ring = new() { Width = 18, Height = 18 };
+    readonly TextBox _location = new() { MinWidth = 120, PlaceholderText = "調べたいフォルダのパス", VerticalContentAlignment = VerticalAlignment.Center };
+    bool _showAll;
 
     public CapacityPaneView(CapacityPaneViewModel viewModel, IWorkspaceActions actions)
     {
@@ -31,14 +33,14 @@ public sealed class CapacityPaneView : UserControl
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(new FontIcon { Glyph = "", FontSize = 16 });
-        var title = new TextBlock { Text = "容量", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        var title = new TextBlock { Text = "ストレージの使用状況", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(title, 1);
         header.Children.Add(title);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         buttons.Children.Add(_ring);
+        buttons.Children.Add(TextButton("\uE8B7", "場所を選ぶ", () => _ = PickLocationAsync()));
         buttons.Children.Add(IconButton("", "更新", () => _ = ViewModel.LoadAsync()));
-        _addZone = TextButton("", "ゾーンを追加", () => _ = EditZoneAsync(null));
-        buttons.Children.Add(_addZone);
+        _addZone = TextButton("", "容量の上限を追加", () => _ = EditZoneAsync(null));
         Grid.SetColumn(buttons, 2);
         header.Children.Add(buttons);
         root.Children.Add(header);
@@ -49,12 +51,25 @@ public sealed class CapacityPaneView : UserControl
         Content = root;
 
         ViewModel.PropertyChanged += OnChanged;
+        _location.KeyDown += (_, e) =>
+        {
+            if (e.Key != Windows.System.VirtualKey.Enter) return;
+            string? path = ShellService.ResolveAddress(_location.Text);
+            if (path != null && Directory.Exists(path)) _ = ViewModel.OpenAsync(path);
+            e.Handled = true;
+        };
         Render();
+    }
+
+    async Task PickLocationAsync()
+    {
+        if (await SuggestMoveDialog.PickFolderAsync() is { } path) await ViewModel.OpenAsync(path);
     }
 
     void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(CapacityPaneViewModel.Report) or nameof(CapacityPaneViewModel.Zones) or nameof(CapacityPaneViewModel.ErrorText)
+        if (e.PropertyName == nameof(CapacityPaneViewModel.Path)) _showAll = false;
+        if (e.PropertyName is nameof(CapacityPaneViewModel.Path) or nameof(CapacityPaneViewModel.Report) or nameof(CapacityPaneViewModel.Zones) or nameof(CapacityPaneViewModel.ErrorText)
             or nameof(CapacityPaneViewModel.IsLoading))
             Render();
     }
@@ -67,57 +82,86 @@ public sealed class CapacityPaneView : UserControl
         _addZone.Visibility = PolicyService.Instance.IsAdmin ? Visibility.Visible : Visibility.Collapsed;
         _body.Children.Clear();
 
-        // ---- クォータゾーン
-        _body.Children.Add(Header("クォータゾーン"));
-        if (!PolicyService.Instance.Managed)
-            _body.Children.Add(Note(PolicyService.Instance.Session?.UnmanagedReason is { } r ? $"容量の管理は無効です: {r}" : "容量の管理は無効です（Indexer に接続中…）"));
-        else if (ViewModel.Zones.Count == 0)
-            _body.Children.Add(Note(PolicyService.Instance.IsAdmin ? "ゾーンはまだありません。「ゾーンを追加」でフォルダごとの上限を決められます。" : "あなたに適用される容量の上限はありません。"));
-        foreach (var zone in ViewModel.Zones) _body.Children.Add(ZoneRow(zone));
-        if (PolicyService.Instance.Session is { UserQuotaBytes: long limit } s)
-            _body.Children.Add(Note($"あなた（{s.Account}）が FileBox で作成したファイル: {Format.HumanSize(s.UserUsedBytes)} / {Format.HumanSize(limit)}"));
-
-        // ---- 内訳
-        var report = ViewModel.Report;
-        var crumb = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 16, 0, 0) };
-        crumb.Children.Add(new TextBlock { Text = "内訳", FontWeight = FontWeights.SemiBold, FontSize = 15, VerticalAlignment = VerticalAlignment.Center });
-        crumb.Children.Add(new TextBlock { Text = ViewModel.Path + (report != null ? $"（合計 {Format.HumanSize(report.Total)}）" : ""), VerticalAlignment = VerticalAlignment.Center, Foreground = Brush("TextFillColorSecondaryBrush") });
-        if (Path.GetDirectoryName(ViewModel.Path.TrimEnd('\\')) is { } parent && ViewModel.Path.Length > 3)
-            crumb.Children.Add(IconButton("", "一つ上", () => _ = ViewModel.OpenAsync(parent)));
-        crumb.Children.Add(IconButton("", "フォルダを開く", () => _actions.OpenInNewTab(ViewModel.Path)));
-        _body.Children.Add(crumb);
-        if (ViewModel.ErrorText != null) _body.Children.Add(Note(ViewModel.ErrorText));
-        if (report == null) return;
-
-        long max = Math.Max(1, report.Children.FirstOrDefault()?.Size ?? 1);
-        foreach (var item in report.Children.Take(40))
-            _body.Children.Add(UsageRow(item, max, report.Total));
-        if (report.Children.Count > 40) _body.Children.Add(Note($"ほか {report.Children.Count - 40} 項目"));
-
-        // ---- 大きいファイル
-        _body.Children.Add(Header("大きいファイル"));
-        int rank = 1;
-        foreach (var file in report.Largest.Take(50))
+        // 実際のディスク使用量と、ファイルの論理サイズ合計を区別して表示する。
+        _body.Children.Add(Header("ドライブの使用状況"));
+        var otherDrives = new StackPanel { Spacing = 8 };
+        foreach (var drive in ViewModel.Drives)
         {
-            var row = new Grid { ColumnSpacing = 10, Padding = new Thickness(0, 2, 0, 2) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.Children.Add(new TextBlock { Text = $"{rank++}.", Foreground = Brush("TextFillColorSecondaryBrush"), VerticalAlignment = VerticalAlignment.Center });
-            var name = new StackPanel();
-            name.Children.Add(new TextBlock { Text = Path.GetFileName(file.Path), TextTrimming = TextTrimming.CharacterEllipsis });
-            name.Children.Add(new TextBlock { Text = Path.GetDirectoryName(file.Path), FontSize = 11, Foreground = Brush("TextFillColorSecondaryBrush"), TextTrimming = TextTrimming.CharacterEllipsis });
-            Grid.SetColumn(name, 1);
-            row.Children.Add(name);
-            var size = new TextBlock { Text = Format.HumanSize(file.Size), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(size, 2);
-            row.Children.Add(size);
-            var open = IconButton("", "場所を開く", () => _actions.OpenInNewTab(file.Path));
-            Grid.SetColumn(open, 3);
-            row.Children.Add(open);
-            _body.Children.Add(row);
+            var card = new Grid { Padding = new Thickness(14), ColumnSpacing = 14, CornerRadius = new CornerRadius(8),
+                Background = Brush("CardBackgroundFillColorDefaultBrush") };
+            card.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            card.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var content = new StackPanel { Spacing = 6 };
+            content.Children.Add(new TextBlock { Text = drive.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+            content.Children.Add(new TextBlock { Text = $"使用中 {Format.HumanSize(drive.Used)}　／　空き {Format.HumanSize(drive.Free)}　／　全体 {Format.HumanSize(drive.Total)}",
+                TextWrapping = TextWrapping.Wrap, FontSize = 13 });
+            content.Children.Add(new ProgressBar { Minimum = 0, Maximum = 100, Value = drive.Total > 0 ? 100.0 * drive.Used / drive.Total : 0, Height = 5 });
+            card.Children.Add(content);
+            var open = TextButton("\uE9D9", "内訳", () => _ = ViewModel.OpenAsync(drive.Path));
+            open.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(open, 1);
+            card.Children.Add(open);
+            if (ViewModel.Path.StartsWith(drive.Path, StringComparison.OrdinalIgnoreCase)) _body.Children.Add(card);
+            else otherDrives.Children.Add(card);
         }
+        if (otherDrives.Children.Count > 0) _body.Children.Add(new Expander { Header = $"ほかのドライブ ({otherDrives.Children.Count})",
+            Content = otherDrives, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+
+        _body.Children.Add(Header("この場所の容量"));
+        var navigation = new Grid { ColumnSpacing = 6 };
+        navigation.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        navigation.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        navigation.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        _location.Text = ViewModel.Path;
+        if (_location.Parent is Panel parentPanel) parentPanel.Children.Remove(_location);
+        navigation.Children.Add(_location);
+        var parent = Directory.GetParent(ViewModel.Path)?.FullName;
+        var up = IconButton("\uE74A", "一つ上の容量を見る", () => { if (parent != null) _ = ViewModel.OpenAsync(parent); });
+        up.IsEnabled = parent != null;
+        Grid.SetColumn(up, 1);
+        navigation.Children.Add(up);
+        var folderOpen = IconButton("\uE838", "このフォルダを開く", () => _actions.OpenInNewTab(ViewModel.Path));
+        Grid.SetColumn(folderOpen, 2);
+        navigation.Children.Add(folderOpen);
+        _body.Children.Add(navigation);
+        if (ViewModel.ErrorText != null) _body.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Message = ViewModel.ErrorText });
+        var report = ViewModel.Report;
+        if (report != null)
+        {
+            var summary = new StackPanel { Spacing = 4, Padding = new Thickness(14), CornerRadius = new CornerRadius(8), Background = Brush("CardBackgroundFillColorDefaultBrush") };
+            summary.Children.Add(Note("この場所に含まれるファイルの合計"));
+            summary.Children.Add(new TextBlock { Text = report.IsPartial && report.Total == 0 ? "集計待ち" : (report.IsPartial ? "約 " : "") + Format.HumanSize(report.Total), FontSize = 32, FontWeight = FontWeights.SemiBold });
+            summary.Children.Add(new TextBlock { Text = $"ファイル {report.FileCount:N0} 件 ・ フォルダ {report.FolderCount:N0} 件", FontSize = 13 });
+            summary.Children.Add(Note(report.Source == "index" ? "検索用の索引をもとに集計。更新後の値は「更新」で再取得できます。" : "読み取れたファイルを集計しています。"));
+            if (report.IsPartial) summary.Children.Add(Note("集計途中、または容量を取得できない項目があります。数値は取得できた分の合計です。"));
+            _body.Children.Add(summary);
+            _body.Children.Add(Note("ドライブの使用中容量にはシステム領域なども含まれるため、上のファイル合計とは一致しないことがあります。"));
+            _body.Children.Add(Header("フォルダ・ファイル別の内訳（容量の大きい順）"));
+            _body.Children.Add(Note("右側は容量とこの場所に占める割合です。フォルダ名を押すと、その中の内訳を表示します。"));
+            if (report.Children.Count == 0) _body.Children.Add(Note(report.IsPartial ? "まだ集計できた項目がありません。時間をおいて更新してください。" : "この場所には集計対象のファイルがありません。"));
+            foreach (var item in report.Children.Take(_showAll ? int.MaxValue : 40)) _body.Children.Add(UsageRow(item, report.Total));
+            if (!_showAll && report.Children.Count > 40)
+                _body.Children.Add(TextButton("\uE70D", $"残り {report.Children.Count - 40:N0} 件も表示", () => { _showAll = true; Render(); }));
+
+            var largest = new Expander { Header = $"内訳の中で大きいファイル（上位 {Math.Min(20, report.Largest.Count)} 件）", IsExpanded = false,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            var largeFiles = new StackPanel { Spacing = 8 };
+            largeFiles.Children.Add(Note("上の内訳に含まれるファイルです。容量を重複して加算しません。"));
+            foreach (var file in report.Largest.Take(20)) largeFiles.Children.Add(UsageRow(file, report.Total, showLocation: true));
+            largest.Content = largeFiles;
+            _body.Children.Add(largest);
+        }
+        else if (ViewModel.IsLoading) _body.Children.Add(Note("容量を集計しています… 一覧の表示を待たずに別の場所へ移動できます。"));
+
+        var limits = new Expander { Header = "容量の上限と通知（設定）", HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        var limitBody = new StackPanel { Spacing = 8 };
+        if (!PolicyService.Instance.Managed) limitBody.Children.Add(Note("容量の上限は現在管理されていません。使用量の確認はそのまま利用できます。"));
+        else if (ViewModel.Zones.Count == 0) limitBody.Children.Add(Note("設定されている容量の上限はありません。"));
+        foreach (var zone in ViewModel.Zones) limitBody.Children.Add(ZoneRow(zone));
+        if (_addZone.Parent is Panel oldPanel) oldPanel.Children.Remove(_addZone);
+        limitBody.Children.Add(_addZone);
+        limits.Content = limitBody;
+        _body.Children.Add(limits);
     }
 
     UIElement ZoneRow(ZoneDto zone)
@@ -158,40 +202,45 @@ public sealed class CapacityPaneView : UserControl
         return grid;
     }
 
-    UIElement UsageRow(UsageItem item, long max, long total)
+    UIElement UsageRow(UsageItem item, long total, bool showLocation = false)
     {
-        var grid = new Grid { ColumnSpacing = 10, Padding = new Thickness(0, 1, 0, 1) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 120 });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
-        grid.Children.Add(new FontIcon
+        var grid = new Grid { ColumnSpacing = 8, RowSpacing = 5, Padding = new Thickness(4, 6, 4, 6) };
+        foreach (double width in new[] { 34.0, -1, 104, 52, 34 })
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = width < 0 ? new GridLength(1, GridUnitType.Star) : new GridLength(width) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.Children.Add(new FileItemIcon { ItemPath = item.Path, IsDirectory = item.IsDirectory, Extension = Path.GetExtension(item.Path) });
+        var name = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        string leaf = Path.GetFileName(item.Path.TrimEnd('\\'));
+        if (item.IsDirectory)
         {
-            Glyph = item.IsDirectory ? "" : FileKinds.Glyph(Path.GetExtension(item.Path)), FontSize = 14,
-            Foreground = item.IsDirectory ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0xE8, 0xA3, 0x3D)) : Brush("TextFillColorSecondaryBrush"),
-        });
-        var name = new HyperlinkButton { Content = Path.GetFileName(item.Path), Padding = new Thickness(2, 0, 2, 0), IsEnabled = item.IsDirectory };
-        if (!item.IsDirectory) name.Foreground = Brush("TextFillColorPrimaryBrush");
-        name.Click += (_, _) => _ = ViewModel.OpenAsync(item.Path);
+            var button = new HyperlinkButton { Content = leaf, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Left, MaxWidth = 480 };
+            button.Click += (_, _) => _ = ViewModel.OpenAsync(item.Path);
+            ToolTipService.SetToolTip(button, item.Path + " の内訳を見る");
+            name.Children.Add(button);
+        }
+        else name.Children.Add(new TextBlock { Text = leaf, TextTrimming = TextTrimming.CharacterEllipsis });
+        if (showLocation) name.Children.Add(new TextBlock { Text = Path.GetDirectoryName(item.Path), TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 11, Foreground = Brush("TextFillColorSecondaryBrush") });
+        ToolTipService.SetToolTip(name, item.Path);
         Grid.SetColumn(name, 1);
         grid.Children.Add(name);
-        var bar = new Border
-        {
-            Height = 10, CornerRadius = new CornerRadius(3), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
-            Background = Brush("AccentFillColorDefaultBrush"), Opacity = 0.8,
-        };
-        var barHost = new Grid();
-        barHost.SizeChanged += (_, e) => bar.Width = Math.Max(2, e.NewSize.Width * item.Size / max);
-        barHost.Children.Add(bar);
-        Grid.SetColumn(barHost, 2);
-        grid.Children.Add(barHost);
-        var size = new TextBlock
-        {
-            Text = $"{Format.HumanSize(item.Size)}（{(total > 0 ? (double)item.Size / total : 0):P0}）",
-            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, FontSize = 12,
-        };
-        Grid.SetColumn(size, 3);
+        var size = new TextBlock { Text = item.IsPartial && item.Size == 0 ? "未集計" : (item.IsPartial ? "約 " : "") + Format.HumanSize(item.Size), FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+        Grid.SetColumn(size, 2);
         grid.Children.Add(size);
+        double percent = total > 0 ? 100.0 * item.Size / total : 0;
+        var share = new TextBlock { Text = $"{percent:0.#}%", FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right, Foreground = Brush("TextFillColorSecondaryBrush") };
+        Grid.SetColumn(share, 3);
+        grid.Children.Add(share);
+        var reveal = IconButton("\uE838", "場所を開く", () => _actions.RevealInFolderPane(ViewModel, item.Path));
+        Grid.SetColumn(reveal, 4);
+        grid.Children.Add(reveal);
+        var bar = new ProgressBar { Value = percent, Maximum = 100, Height = 4 };
+        Grid.SetRow(bar, 1);
+        Grid.SetColumn(bar, 1);
+        Grid.SetColumnSpan(bar, 3);
+        grid.Children.Add(bar);
         return grid;
     }
 
@@ -248,7 +297,7 @@ public sealed class CapacityPaneView : UserControl
 
         var dialog = new ContentDialog
         {
-            XamlRoot = XamlRoot, Title = zone == null ? "クォータゾーンを追加" : "クォータゾーンを編集", Content = panel,
+            XamlRoot = XamlRoot, Title = zone == null ? "容量の上限を追加" : "容量の上限を編集", Content = panel,
             PrimaryButtonText = "保存", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Primary,
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
@@ -268,7 +317,7 @@ public sealed class CapacityPaneView : UserControl
     {
         var confirm = new ContentDialog
         {
-            XamlRoot = XamlRoot, Title = "クォータゾーンを削除しますか？", Content = zone.Path,
+            XamlRoot = XamlRoot, Title = "容量の上限を削除しますか？", Content = zone.Path,
             PrimaryButtonText = "削除", CloseButtonText = "キャンセル",
         };
         if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
@@ -297,6 +346,7 @@ public sealed class CapacityPaneView : UserControl
     {
         var b = new Button { Content = new FontIcon { Glyph = glyph, FontSize = 13 }, Padding = new Thickness(7, 5, 7, 5), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0) };
         ToolTipService.SetToolTip(b, tip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, tip);
         b.Click += (_, _) => action();
         return b;
     }

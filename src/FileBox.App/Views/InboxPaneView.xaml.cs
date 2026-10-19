@@ -14,6 +14,7 @@ namespace FileBox.App.Views;
 public sealed partial class InboxPaneView : UserControl
 {
     public InboxPaneViewModel ViewModel { get; }
+    public string SourcesText => "整理対象: " + string.Join("、", InboxService.Instance.Sources);
     readonly IWorkspaceActions _actions;
 
     public InboxPaneView(InboxPaneViewModel viewModel, IWorkspaceActions actions)
@@ -134,7 +135,16 @@ public sealed partial class InboxPaneView : UserControl
             async () => { foreach (var op in ops) await FileMover.UndoAsync(op); });
     }
 
-    async void Settings_Click(object sender, RoutedEventArgs e) => await InboxSettingsDialog.ShowAsync(XamlRoot);
+    async void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        await InboxSettingsDialog.ShowAsync(XamlRoot);
+        SourcesLabel.Text = SourcesText;
+    }
+
+    void OpenDownloads_Click(object sender, RoutedEventArgs e)
+    {
+        if (ShellService.KnownFolder(ShellService.QuickAccess[2].Id) is { } path) _actions.OpenInNewTab(path);
+    }
 
     static string Leaf(string path) => Path.GetFileName(path.TrimEnd('\\')) is { Length: > 0 } n ? n : path;
 }

@@ -5,7 +5,7 @@ using FileBox.App.Services;
 
 namespace FileBox.App.ViewModels;
 
-/// <summary>受け取りボックス区画（02_機能設計 §1.6）。中身は全区画で共通の <see cref="InboxService"/>。</summary>
+/// <summary>ダウンロードの整理区画（02_機能設計 §1.6）。中身は全区画で共通の <see cref="InboxService"/>。</summary>
 public sealed partial class InboxPaneViewModel : PaneViewModel
 {
     public override PaneKind Kind => PaneKind.Inbox;
@@ -21,7 +21,7 @@ public sealed partial class InboxPaneViewModel : PaneViewModel
     public InboxPaneViewModel(string? id = null)
     {
         if (id != null) Id = id;
-        Title = "受け取りボックス";
+        Title = "ダウンロードの整理";
         InboxService.Instance.CountChanged += UpdateSummary;
         Items.CollectionChanged += OnItemsChanged;
         UpdateSummary();

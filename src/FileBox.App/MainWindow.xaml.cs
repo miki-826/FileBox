@@ -561,11 +561,9 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
     void UpdateInboxEntry()
     {
-        int n = InboxService.Instance.Items.Count;
         InboxList.ItemsSource = new List<SidebarItem>
         {
             new() { Name = "PC", Glyph = "\uE7F8", Kind = SidebarKind.Folder, Color = "#3E63DD" },
-            new() { Name = n > 0 ? $"受け取りボックス（{n}）" : "受け取りボックス", Glyph = "", Kind = SidebarKind.Inbox },
         };
         UpdateSidebarSelection();
     }

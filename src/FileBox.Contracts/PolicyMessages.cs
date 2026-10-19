@@ -137,12 +137,17 @@ public sealed class UsageItem
     public bool IsDirectory { get; set; }
     public long Size { get; set; }
     public DateTime? Modified { get; set; }
+    public bool IsPartial { get; set; }
 }
 
 public sealed class UsageReport
 {
     public string Path { get; set; } = "";
     public long Total { get; set; }
+    public long FileCount { get; set; }
+    public long FolderCount { get; set; }
+    public bool IsPartial { get; set; }
+    public string Source { get; set; } = "index";
     public List<UsageItem> Children { get; set; } = new();
     public List<UsageItem> Largest { get; set; } = new();
 }

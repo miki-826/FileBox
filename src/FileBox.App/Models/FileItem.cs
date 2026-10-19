@@ -1,9 +1,10 @@
 using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace FileBox.App.Models;
 
 /// <summary>一覧・検索結果の1行。</summary>
-public sealed class FileItem
+public sealed class FileItem : ObservableObject
 {
     public required string Name { get; init; }
     public required string FullPath { get; init; }
@@ -12,6 +13,24 @@ public sealed class FileItem
     public long Size { get; init; }
     public DateTime? Modified { get; init; }
     public bool IsHidden { get; init; }
+    long? _folderBytes;
+    bool _folderSizePartial;
+    string _folderSizeState = "未集計";
+    public long? FolderBytes => _folderBytes;
+    public long SortSize => IsDirectory && !IsDrive ? _folderBytes ?? -1 : Size;
+
+    public void SetFolderSize(long? bytes, bool partial = false, string? state = null)
+    {
+        _folderBytes = bytes;
+        _folderSizePartial = partial;
+        _folderSizeState = state ?? "未集計";
+        OnPropertyChanged(nameof(SizeText));
+        OnPropertyChanged(nameof(HumanSize));
+        OnPropertyChanged(nameof(SizeDescription));
+    }
+    public string SizeDescription => IsDirectory && !IsDrive
+        ? _folderBytes is long bytes ? $"配下のファイル合計: {bytes:N0} バイト" + (_folderSizePartial ? "（集計途中または一部取得不可）" : "（索引または読み取れたファイルに基づく）") : _folderSizeState
+        : SizeText;
 
     /// <summary>ドライブの使用率（0〜1）とラベル。</summary>
     public double DriveUsage { get; init; }
@@ -20,8 +39,10 @@ public sealed class FileItem
     public string Glyph => IsDrive ? "" : IsDirectory ? "" : FileKinds.Glyph(Extension);
     public string Extension => IsDirectory ? "" : Path.GetExtension(Name).ToLowerInvariant();
     public string TypeText => IsDrive ? "ドライブ" : IsDirectory ? "ファイル フォルダー" : Extension.Length > 1 ? $"{Extension[1..].ToUpperInvariant()} ファイル" : "ファイル";
-    public string SizeText => IsDrive ? DriveInfoText ?? "" : IsDirectory ? "" : Format.ExplorerSize(Size);
-    public string HumanSize => IsDirectory ? "" : Format.HumanSize(Size);
+    public string SizeText => IsDrive ? DriveInfoText ?? "" : IsDirectory
+        ? _folderBytes is long bytes ? _folderSizePartial && bytes == 0 ? "未集計" : (_folderSizePartial ? "約 " : "") + Format.HumanSize(bytes) : _folderSizeState
+        : Format.HumanSize(Size);
+    public string HumanSize => IsDirectory ? SizeText : Format.HumanSize(Size);
     public string ModifiedText => Modified?.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture) ?? "";
     public string Location => Path.GetDirectoryName(FullPath) ?? "";
     public double ItemOpacity => IsHidden ? 0.6 : 1.0;

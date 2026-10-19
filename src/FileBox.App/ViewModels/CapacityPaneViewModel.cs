@@ -28,6 +28,8 @@ public sealed partial class CapacityPaneViewModel : PaneViewModel
     /// <summary>管理者が見るときは全員分のゾーン、それ以外は自分に効くゾーン。</summary>
     public List<UserDto> Users { get; private set; } = new();
     public List<RoleDto> Roles { get; private set; } = new();
+    public List<DriveUsage> Drives { get; private set; } = new();
+    CancellationTokenSource? _loadCts;
 
     public CapacityPaneViewModel(string? path, string? id = null)
     {
@@ -39,31 +41,43 @@ public sealed partial class CapacityPaneViewModel : PaneViewModel
 
     public async Task LoadAsync()
     {
+        _loadCts?.Cancel();
+        var cts = _loadCts = new CancellationTokenSource();
         IsLoading = true;
         ErrorText = null;
+        Report = null;
+        string path = Path.Length == 0 ? System.IO.Path.GetPathRoot(Environment.SystemDirectory)! : Path;
+        Path = path;
         try
         {
+            Drives = await Task.Run(() => DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => new DriveUsage(
+                d.RootDirectory.FullName, string.IsNullOrEmpty(d.VolumeLabel) ? d.Name : $"{d.VolumeLabel} ({d.Name.TrimEnd('\\')})",
+                d.TotalSize, d.TotalSize - d.TotalFreeSpace, d.TotalFreeSpace)).ToList(), cts.Token);
+            var report = await FolderUsageService.ReadAsync(path, cts.Token);
+            if (cts.IsCancellationRequested) return;
+            Report = report;
+            Title = "容量: " + (System.IO.Path.GetFileName(path.TrimEnd('\\')) is { Length: > 0 } n ? n : path);
+            // 上限の設定を取得できなくても、使用量の表示は続ける。
             var policy = PolicyService.Instance;
-            if (policy.Session == null) await policy.RefreshAsync();   // 起動直後はまだアカウント情報が届いていない
-            if (policy.IsAdmin)
+            try
             {
-                var data = await IndexClient.Instance.CallAsync<AdminData>(PolicyMethods.AdminUsers);
-                Zones = data?.Zones ?? new();
-                Users = data?.Users ?? new();
-                Roles = data?.Roles ?? new();
+                if (policy.Session == null) await policy.RefreshAsync();
+                if (cts.IsCancellationRequested) return;
+                if (policy.IsAdmin)
+                {
+                    var data = await IndexClient.Instance.CallAsync<AdminData>(PolicyMethods.AdminUsers, ct: cts.Token);
+                    if (cts.IsCancellationRequested) return;
+                    Users = data?.Users ?? new();
+                    Roles = data?.Roles ?? new();
+                    Zones = data?.Zones ?? new();
+                }
+                else Zones = policy.Session?.Zones ?? new();
             }
-            else
-            {
-                await policy.RefreshAsync();
-                Zones = policy.Session?.Zones ?? new();
-            }
-            if (Path.Length == 0) Path = Zones.FirstOrDefault()?.Path ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            Report = await IndexClient.Instance.CallAsync<UsageReport>(PolicyMethods.Usage, Path);
-            if (Report == null) ErrorText = $"「{Path}」は索引にありません（索引の作成中か、対象外のドライブです）";
-            Title = "容量: " + (System.IO.Path.GetFileName(Path.TrimEnd('\\')) is { Length: > 0 } n ? n : Path);
+            catch (InvalidOperationException) { Zones = new(); }
         }
-        catch (Exception ex) { ErrorText = ex.Message; }
-        finally { IsLoading = false; }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { if (!cts.IsCancellationRequested) ErrorText = ex.Message; }
+        finally { if (_loadCts == cts) IsLoading = false; }
     }
 
     public Task OpenAsync(string path)
@@ -72,5 +86,9 @@ public sealed partial class CapacityPaneViewModel : PaneViewModel
         return LoadAsync();
     }
 
+    public override void Dispose() => _loadCts?.Cancel();
+
     public override JsonObject Serialize() => new() { ["pane"] = "capacity", ["id"] = Id, ["path"] = Path };
 }
+
+public sealed record DriveUsage(string Path, string Name, long Total, long Used, long Free);

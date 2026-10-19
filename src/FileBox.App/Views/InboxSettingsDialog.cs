@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace FileBox.App.Views;
 
-/// <summary>受け取りボックスの監視フォルダと振り分けルールの管理（02_機能設計 §1.6）。</summary>
+/// <summary>ダウンロードの整理の監視フォルダと振り分けルールの管理（02_機能設計 §1.6）。</summary>
 public static class InboxSettingsDialog
 {
     public static async Task ShowAsync(XamlRoot root)
@@ -42,7 +42,7 @@ public static class InboxSettingsDialog
             if (list.Count == 0)
                 rules.Children.Add(new TextBlock
                 {
-                    Text = "ルールはまだありません。受け取りボックスの項目の「…」メニューから作れます。",
+                    Text = "ルールはまだありません。ダウンロードの整理の項目の「…」メニューから作れます。",
                     Foreground = Secondary, TextWrapping = TextWrapping.Wrap, FontSize = 12,
                 });
             foreach (var r in list)
@@ -79,7 +79,7 @@ public static class InboxSettingsDialog
         var dialog = new ContentDialog
         {
             XamlRoot = root,
-            Title = "受け取りボックスの設定",
+            Title = "ダウンロードの整理の設定",
             Content = new ScrollViewer { Content = content, MaxHeight = 560 },
             CloseButtonText = "閉じる",
         };

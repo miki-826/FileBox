@@ -92,7 +92,7 @@ public sealed class InboxService
     {
         if (_store.GetSetting("inbox.seeded") == null)
         {
-            foreach (var path in new[] { ShellService.KnownFolder(ShellService.QuickAccess[2].Id), Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) })
+            foreach (var path in new[] { ShellService.KnownFolder(ShellService.QuickAccess[2].Id) })
                 if (path != null && Directory.Exists(path)) _store.AddInboxSource(path);
             _store.SetSetting("inbox.seeded", "1");
         }

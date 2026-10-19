@@ -22,6 +22,23 @@ public sealed class PolicyHostTests : IDisposable
     }
 
     [Fact]
+    public void UsageRequiresReadPermissionFromTheCaller()
+    {
+        using var host = new PolicyHost(Sample(), elevated: false, _db);
+        var owner = new Caller("S-1-5-21-100", @"PC\owner", false);
+        var reader = new Caller("S-1-5-21-200", @"PC\reader", false);
+        host.Handle(owner, PolicyMethods.Session, null);
+        var session = PolicyMethods.FromNode<SessionInfo>(host.Handle(reader, PolicyMethods.Session, null))!;
+        host.Handle(owner, PolicyMethods.AdminSetPermission, PolicyMethods.ToNode(new PermissionDto
+        {
+            Path = @"D:\写真", UserId = session.UserId, Deny = (int)Core.Security.Permission.Read,
+        }));
+        Assert.Throws<UnauthorizedAccessException>(() => host.Handle(reader, PolicyMethods.Usage, PolicyMethods.ToNode(@"D:\写真")));
+        var report = PolicyMethods.FromNode<UsageReport>(host.Handle(owner, PolicyMethods.Usage, PolicyMethods.ToNode(@"D:\写真")))!;
+        Assert.Equal(1000, report.Total);
+    }
+
+    [Fact]
     public void RegistersCallersAndEnforcesAdminRole()
     {
         using var host = new PolicyHost(Sample(), elevated: false, _db);
