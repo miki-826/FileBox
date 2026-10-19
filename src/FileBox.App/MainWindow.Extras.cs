@@ -183,27 +183,8 @@ public sealed partial class MainWindow
     public void OpenSearch(string query)
     {
         SearchBox.Text = query;
-        _searchTimer.Stop();
+        CancelSearchSuggestions();
         AddTab(new TabViewModel(new SearchPaneViewModel(query)));
-    }
-
-    // ================================================================ 検索欄の候補（書き方のヒント）
-
-    void UpdateSearchSuggestions(AutoSuggestBox box)
-    {
-        if (box.Text.Length == 0)
-        {
-            box.ItemsSource = _store.GetSearchHistory(10);
-            return;
-        }
-        var hints = QueryHints.For(box.Text);
-        box.ItemsSource = hints.Count > 0 ? hints.Select(h => new SearchHint(h)).ToList() : null;
-    }
-
-    /// <summary>候補の表示（書き方のヒントは説明つき）。</summary>
-    sealed record SearchHint(QueryHint Hint)
-    {
-        public override string ToString() => $"{Hint.Label}　— {Hint.Description}";
     }
 
     // ================================================================ 容量・更新・ホットキー

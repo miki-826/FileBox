@@ -41,9 +41,10 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         catch (Exception) { }
 
         _searchTimer = DispatcherQueue.CreateTimer();
-        _searchTimer.Interval = TimeSpan.FromMilliseconds(150);
+        _searchTimer.Interval = TimeSpan.FromMilliseconds(200);
         _searchTimer.IsRepeating = false;
-        _searchTimer.Tick += (_, _) => RunSearchInCurrentTab(SearchBox.Text);
+        _searchTimer.Tick += async (_, _) => await RefreshSearchSuggestionsAsync();
+        SearchBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(SearchBox_KeyDown), true);
 
         _statusTimer = DispatcherQueue.CreateTimer();
         _statusTimer.Interval = TimeSpan.FromSeconds(2);
@@ -400,7 +401,10 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
     void SearchBox_GotFocus(object sender, RoutedEventArgs e)
     {
-        if (SearchBox.Text.Length == 0) SearchBox.ItemsSource = _store.GetSearchHistory(10);
+        _searchFocused = true;
+        _suggestionsDismissed = false;
+        ShowSearchSuggestions(SearchBox.Text);
+        if (!string.IsNullOrWhiteSpace(SearchBox.Text)) { _searchTimer.Stop(); _searchTimer.Start(); }
     }
 
     void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
@@ -408,30 +412,28 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         SyncChipsFromQuery();
         UpdateAddressBar();
         if (args.Reason == AutoSuggestionBoxTextChangeReason.SuggestionChosen) return;
-        UpdateSearchSuggestions(sender);
         _searchTimer.Stop();
-        _searchTimer.Start();
-    }
-
-    void SearchBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
-    {
-        // 書き方のヒントは選んだら続けて入力できるようにし、検索の履歴はそのまま入れる
-        sender.Text = args.SelectedItem switch
-        {
-            SearchHint hint => hint.Hint.Query,
-            string history => history,
-            _ => sender.Text,
-        };
+        _suggestionsCts?.Cancel();
+        _suggestionsDismissed = false;
+        ShowSearchSuggestions(sender.Text);
+        if (_searchFocused && !string.IsNullOrWhiteSpace(sender.Text)) _searchTimer.Start();
     }
 
     void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        if (args.ChosenSuggestion is SearchHint hint)
+        if (args.ChosenSuggestion is SearchSuggestionItem candidate)
         {
-            sender.Text = hint.Hint.Query;
-            return;
+            if (ChooseSearchLocation(candidate)) return;
+            if (candidate.Suggestion.Kind == SearchSuggestionKind.Filter)
+            {
+                sender.Text = candidate.Suggestion.Query;
+                sender.Focus(FocusState.Programmatic);
+                return;
+            }
         }
-        string query = args.ChosenSuggestion as string ?? args.QueryText;
+        string query = args.ChosenSuggestion is SearchSuggestionItem selected ? selected.Suggestion.Query : args.QueryText;
+        sender.Text = query;
+        CancelSearchSuggestions();
         if (string.IsNullOrWhiteSpace(query)) return;
         _store.AddSearchHistory(query);
         // Enter: 検索結果を新しいタブで開く（02_機能設計 §3 / 04_画面設計 S02）
@@ -441,7 +443,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         _searchTimer.Stop();
     }
 
-    /// <summary>入力中は現在のタブに検索結果区画を出す（なければ右側に分割して追加）。</summary>
+    /// <summary>条件チップなどで検索を変更したとき、現在タブの結果区画を更新する。</summary>
     void RunSearchInCurrentTab(string query)
     {
         var tab = CurrentTab;
@@ -470,7 +472,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
     void SetQuery(string query)
     {
         SearchBox.Text = query;
-        _searchTimer.Stop();
+        CancelSearchSuggestions();
         RunSearchInCurrentTab(query);
     }
 
@@ -795,6 +797,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
     void OnClosed(object sender, WindowEventArgs args)
     {
+        CancelSearchSuggestions();
         _linkServer?.Dispose();
         GlobalHotkey.Instance.Dispose();
         ContentIndexer.Instance.Dispose();

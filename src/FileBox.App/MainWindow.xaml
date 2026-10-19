@@ -134,8 +134,38 @@
                             UpdateTextOnSelect="False"
                             TextChanged="SearchBox_TextChanged"
                             QuerySubmitted="SearchBox_QuerySubmitted"
-                            SuggestionChosen="SearchBox_SuggestionChosen"
-                            GotFocus="SearchBox_GotFocus" />
+                            GotFocus="SearchBox_GotFocus"
+                            LostFocus="SearchBox_LostFocus"
+                            MaxSuggestionListHeight="300"
+                            ToolTipService.ToolTip="入力すると候補を表示。↑↓で選択、Enterで確定、Escで閉じます。">
+                <AutoSuggestBox.ItemContainerStyle>
+                    <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="10,2" />
+                        <Setter Property="MinHeight" Value="44" />
+                    </Style>
+                </AutoSuggestBox.ItemContainerStyle>
+                <AutoSuggestBox.ItemTemplate>
+                    <DataTemplate x:DataType="models:SearchSuggestionItem">
+                        <StackPanel Spacing="4" Padding="0,4" HorizontalAlignment="Stretch">
+                            <TextBlock Text="{x:Bind Group}" Visibility="{x:Bind views:Converters.VisibleIf(Group)}"
+                                       FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Grid ColumnDefinitions="34,*" ColumnSpacing="8" MinHeight="38">
+                                <views:FileItemIcon ItemPath="{x:Bind ItemPath}" IsDirectory="{x:Bind IsDirectory}" Extension="{x:Bind Extension}"
+                                                    Visibility="{x:Bind views:Converters.Visible(IsLocation)}" />
+                                <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" Visibility="{x:Bind views:Converters.Collapsed(IsLocation)}"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{x:Bind Title}" Tag="data" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Title}" />
+                                    <TextBlock Text="{x:Bind Detail}" Tag="data" FontSize="11" TextTrimming="CharacterEllipsis"
+                                               Visibility="{x:Bind views:Converters.VisibleIf(Detail)}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               ToolTipService.ToolTip="{x:Bind Detail}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </DataTemplate>
+                </AutoSuggestBox.ItemTemplate>
+            </AutoSuggestBox>
 
             <Button Grid.Column="4" MinHeight="40" Padding="10,6" AutomationProperties.Name="検索条件を設定" ToolTipService.ToolTip="種類・一致方法・更新日・検索範囲を設定">
                 <StackPanel Orientation="Horizontal" Spacing="6">

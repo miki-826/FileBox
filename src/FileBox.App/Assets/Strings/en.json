@@ -1019,5 +1019,10 @@
   "（自動移動）": " (auto-move)",
   "（集計途中または一部取得不可）": " (still counting or partly unavailable)",
   "＋ 監視フォルダを追加": "+ Add watched folder",
-  "／ごみ箱 {0}": " / Recycle Bin {0}"
+  "／ごみ箱 {0}": " / Recycle Bin {0}",
+  "もしかしてこれ？": "Could this be it?",
+  "検索候補を取得できませんでした": "Could not load search suggestions",
+  "候補のファイルが見つかりません。もう一度検索してください。": "The suggested file is no longer available. Try searching again.",
+  "入力すると候補を表示。↑↓で選択、Enterで確定、Escで閉じます。": "Type to see suggestions. Use arrow keys to select, Enter to confirm, and Esc to dismiss.",
+  "検索履歴": "Search history"
 }
