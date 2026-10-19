@@ -14,6 +14,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  retire-downloader:
+    name: 検出された旧ダウンローダーの配布を停止
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({...context.repo, tag: 'preview'})).data;
+            } catch (error) {
+              if (error.status === 404) return;
+              throw error;
+            }
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {...context.repo, release_id: release.id});
+            for (const asset of assets) {
+              if (['FileBox-Setup.exe', 'FileBox-Setup.exe.sha256'].includes(asset.name)) {
+                await github.rest.repos.deleteReleaseAsset({...context.repo, asset_id: asset.id});
+              }
+            }
+            const notice = '旧 FileBox-Setup.exe は Defender の検出を受け配布停止しました。復元・許可や保護機能の無効化はしないでください。';
+            if (!release.body?.startsWith(notice)) {
+              await github.rest.repos.updateRelease({...context.repo, release_id: release.id,
+                body: notice + '\n\n新しい配布物は公開前スキャンの完了後にこのページで案内します。'});
+            }
+
   build:
     name: テスト・Windows 版の作成
     runs-on: windows-latest
@@ -34,7 +63,11 @@ jobs:
 
       - name: 本体 ZIP を作成して同梱ファイルを検証
         shell: pwsh
-        run: ./scripts/Package-Preview.ps1 -SkipBuild -SkipSetup
+        run: ./scripts/Package-Preview.ps1 -SkipBuild
+
+      - name: 本体と ZIP を Defender で検査
+        shell: pwsh
+        run: ./scripts/Test-ReleaseSafety.ps1 -Path 'src/FileBox.App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64', 'dist/FileBox-preview-win-x64.zip' -ReportPath dist/FileBox-app-scan.json -UpdateSignatures
 
       - name: 本体 ZIP を保存
         id: artifact
@@ -44,6 +77,7 @@ jobs:
           path: |
             dist/FileBox-preview-win-x64.zip
             dist/FileBox-preview-win-x64.zip.sha256
+            dist/FileBox-app-scan.json
           if-no-files-found: error
           retention-days: 30
 
@@ -54,7 +88,7 @@ jobs:
         run: |
           @"
           ## Windows x64 版の作成が完了しました
-          - 単体テスト・本体のビルド・ZIP の同梱検証に成功しました。
+          - 単体テスト・本体のビルド・ZIP の同梱検証・Defender の配布前スキャンに成功しました。
           - [この実行の成果物]($env:ARTIFACT_URL)（開発・検証向け。GitHub ログインが必要です）
           - main の配布では、次のジョブで [開発プレビューの配布ページ](https://github.com/miki-826/FileBox/releases/tag/preview) を更新します。
           "@ >> $env:GITHUB_STEP_SUMMARY
@@ -71,10 +105,6 @@ jobs:
           name: FileBox-App-Windows-x64
           path: dist
 
-      - name: FileBox-Setup.exe をコンパイル
-        shell: pwsh
-        run: ./scripts/Build-Setup.ps1
-
       - name: 本体同梱のインストーラーを作成（Inno Setup）
         shell: pwsh
         run: |
@@ -82,16 +112,19 @@ jobs:
           Expand-Archive -LiteralPath dist/FileBox-preview-win-x64.zip -DestinationPath dist/app -Force
           ./scripts/Build-Installer.ps1 -SourceDir dist/app
 
+      - name: 最終インストーラーを Defender で検査
+        shell: pwsh
+        run: ./scripts/Test-ReleaseSafety.ps1 -Path dist/FileBox-Installer-preview-win-x64.exe -ReportPath dist/FileBox-installer-scan.json -UpdateSignatures
+
       - name: インストーラーを保存
         id: installer-artifact
         uses: actions/upload-artifact@v4
         with:
           name: FileBox-Installer-Windows-x64
           path: |
-            dist/FileBox-Setup.exe
-            dist/FileBox-Setup.exe.sha256
             dist/FileBox-Installer-preview-win-x64.exe
             dist/FileBox-Installer-preview-win-x64.exe.sha256
+            dist/FileBox-installer-scan.json
           if-no-files-found: error
           retention-days: 30
 
@@ -104,13 +137,13 @@ jobs:
           ## インストーラー EXE を作成しました
           - [この実行のインストーラー]($env:INSTALLER_ARTIFACT_URL)（GitHub ログインが必要です）
           - FileBox-Installer-preview-win-x64.exe は本体を同梱したインストーラーです（オフラインで導入でき、アンインストールにも対応）。
-          - FileBox-Setup.exe は実行時に本体をダウンロードする小さなダウンローダーです。
+          - 最終 EXE の Defender スキャンに成功しました。定義バージョンと SHA-256 は同梱の JSON に記録しています。
           - main からの公開後は [インストーラーを直接ダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe) できます。
           "@ >> $env:GITHUB_STEP_SUMMARY
 
   release:
     name: ダウンロードページの更新
-    needs: [build, installer]
+    needs: [build, installer, retire-downloader]
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: windows-latest
     permissions:
@@ -156,7 +189,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload preview dist/FileBox-Installer-preview-win-x64.exe dist/FileBox-Installer-preview-win-x64.exe.sha256 dist/FileBox-Setup.exe dist/FileBox-Setup.exe.sha256 dist/FileBox-preview-win-x64.zip dist/FileBox-preview-win-x64.zip.sha256 --clobber
+          gh release upload preview dist/FileBox-Installer-preview-win-x64.exe dist/FileBox-Installer-preview-win-x64.exe.sha256 dist/FileBox-preview-win-x64.zip dist/FileBox-preview-win-x64.zip.sha256 dist/FileBox-app-scan.json dist/FileBox-installer-scan.json --clobber
           if ($LASTEXITCODE -ne 0) { throw '配布ファイルの公開に失敗しました。' }
 
       - name: ダウンロードリンクを表示

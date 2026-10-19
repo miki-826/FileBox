@@ -1,5 +1,5 @@
 # ローカルと GitHub Actions で同じ開発プレビュー ZIP を作る。
-param([switch]$SkipBuild, [switch]$SkipSetup)
+param([switch]$SkipBuild)
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -33,7 +33,8 @@ FileBox 開発プレビュー（ビルド元: $revision）
 使い方:
 1. ZIP の中身をすべて同じフォルダに展開してください。
 2. FileBox.exe を起動してください。indexer フォルダも必要です。
-簡単な導入: リリースページの FileBox-Setup.exe を起動すると本体の取得と展開が始まります。
+簡単な導入: リリースページの FileBox-Installer-preview-win-x64.exe は本体同梱のインストーラーです。
+旧 FileBox-Setup.exe の作成・配布は停止しました。検出されたファイルの復元・許可はしないでください。
 
 動作環境: Windows 10 1809 以降 / Windows 11（x64）
 .NET 8 と Windows App SDK は同梱されています。別途インストールする必要はありません。
@@ -59,6 +60,5 @@ FileBox 開発プレビュー（ビルド元: $revision）
     } finally { $archive.Dispose() }
     $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -LiteralPath "$zip.sha256" -Value "$hash  FileBox-preview-win-x64.zip" -Encoding ascii
-    if (-not $SkipSetup) { & (Join-Path $PSScriptRoot 'Build-Setup.ps1') }
     Write-Host "配布用 ZIP: $zip"
 } finally { Pop-Location }

@@ -16,29 +16,37 @@ Windows のエクスプローラーの代わりに使うことを目指したフ
 
 ## ダウンロード（開発プレビュー）
 
-### [⬇ FileBox-Setup.exe をダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Setup.exe)
+### [⬇ 本体同梱インストーラーをダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe)
 
-1. **FileBox-Setup.exe** を実行すると、最新版のダウンロードが始まります。
-2. 進捗画面で取得・展開が完了するまで待ちます。
-3. **「FileBox を起動」**を押してください。
+1. **FileBox-Installer-preview-win-x64.exe** をダウンロードします。
+2. インストール先とショートカットを確認して導入します。本体は同梱しているため、導入中の追加ダウンロードはありません。
+3. 完了画面またはデスクトップの「FileBox」から起動します。
 
-Windows 10 1809 以降 / Windows 11（x64）に対応。必要な .NET 8 と Windows App SDK は本体に同梱しているため、別途インストールする必要はありません。
+Windows 10 1809 以降 / Windows 11（x64）に対応。.NET 8 と Windows App SDK を同梱しています。管理者権限は不要です。保存先は `%LOCALAPPDATA%\Programs\FileBox\installed` で、Windows の「設定 → アプリ」からアンインストールできます。ユーザー設定は残ります。
 
-**本体同梱のインストーラー**: [FileBox-Installer-preview-win-x64.exe](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe)（オフラインで導入でき、スタートメニュー・デスクトップへのショートカット作成と「アプリ」からのアンインストールに対応。管理者権限は不要。[SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe.sha256)）
+**旧 FileBox-Setup.exe は Microsoft Defender の検出を受け、作成・配布を停止しました。** 検出されたファイルは復元・許可せず、保護機能も無効にしないでください。誤検知かどうかは未確定です。本体同梱インストーラーは旧ダウンローダーとは別の既存の導入方式です。
 
 - [配布ページ・使い方](https://github.com/miki-826/FileBox/releases/tag/preview)
-- [本体 ZIP を直接ダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip)（手動で展開する方向け）
-- [EXE の SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Setup.exe.sha256) / [ZIP の SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip.sha256)
+- [インストーラーの SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe.sha256)
+- [本体 ZIP](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip) / [ZIP の SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip.sha256)（手動展開向け）
+- [本体・ZIP のスキャン結果](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-app-scan.json) / [インストーラーのスキャン結果](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-installer-scan.json)
 
-EXE は GitHub から本体を取得し、`%LOCALAPPDATA%\Programs\FileBox\preview-…\app` に展開します。「保存先を開く」で場所を確認できます。通信エラーは「再試行」でやり直せます。既存の本体とユーザー設定は上書きしません。
+ZIP 版はすべて展開して `FileBox.exe` を起動してください。`indexer` フォルダも必要です。上書き更新時は `FileBox` と `FileBox.Indexer` を終了してください。
 
-ZIP 版はすべて展開して `FileBox.exe` を起動してください。`indexer` フォルダも必要です。上書き更新する場合は `FileBox` と `FileBox.Indexer` を終了してください。署名していないため、Windows が発行元を確認できない旨を表示する場合があります。
+main への push または main 上の手動実行で、[GitHub Actions](https://github.com/miki-826/FileBox/actions/workflows/build.yml) がテスト・ビルド・同梱検証・Defender スキャン後に **preview プレリリース**を更新します。検出・スキャンエラー・定義更新の失敗があれば公開を止めます。旧ダウンローダーはビルドの成否に関係なく先に配布停止します。
 
-main への push または main 上での手動実行で、[GitHub Actions](https://github.com/miki-826/FileBox/actions/workflows/build.yml) がテスト・ビルド・検証後に **preview プレリリース**を更新します。上記のダウンロードリンクは固定です。Actions の実行結果にもダウンロード案内を表示します。
+スキャン結果には検査日時・定義バージョン・配布物の SHA-256 を記録します。検査時点の判定であり、将来の再検出を保証するものではありません。コード署名用の証明書は未設定で、発行元の警告が出る場合もあります。検出された場合は実行せず、[Microsoft の解析窓口](https://www.microsoft.com/en-us/wdsi/filesubmission)で審査を受けてください。
 
-Actions で手動作成する場合は、上のリンクで **Run workflow → main → Run workflow** を選びます。**「テスト・Windows 版の作成」→「インストーラー EXE の作成」→「ダウンロードページの更新」**の順に実行します。実行ページの Artifacts にある **FileBox-Installer-Windows-x64** からも取得できます（成果物のダウンロードには GitHub ログインが必要です）。一般配布には上記の直接ダウンロードリンクを使ってください。
+Actions で手動作成する場合は **Run workflow → main → Run workflow** を選びます。**「テスト・Windows 版の作成」→「インストーラー EXE の作成」→「ダウンロードページの更新」**の順に実行します。Artifacts の **FileBox-Installer-Windows-x64** にもインストーラーとスキャン結果を保存します。
 
-配布用ファイルを手元で作るには `./scripts/Package-Preview.ps1` を実行します。`dist/` にダウンロード用 EXE、本体 ZIP、それぞれの SHA-256 を出力します。本体同梱のインストーラーは [Inno Setup 6](https://jrsoftware.org/isinfo.php) を入れたうえで `./scripts/Build-Installer.ps1` を実行すると `dist/` に作成されます。
+手元で配布物を作る手順（[Inno Setup 6](https://jrsoftware.org/isinfo.php) と動作中の Microsoft Defender が必要）:
+
+```powershell
+./scripts/Package-Preview.ps1
+./scripts/Build-Installer.ps1
+./scripts/Test-ReleaseSafety.ps1 -Path 'src/FileBox.App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64', 'dist/FileBox-preview-win-x64.zip' -ReportPath dist/FileBox-app-scan.json -UpdateSignatures
+./scripts/Test-ReleaseSafety.ps1 -Path dist/FileBox-Installer-preview-win-x64.exe -ReportPath dist/FileBox-installer-scan.json -UpdateSignatures
+```
 
 ### 注意
 - エクスプローラーの置き換え（設定）は既定でオフです。オンにすると現在のユーザーのレジストリ（HKCU）を変更し、オフで元に戻ります
