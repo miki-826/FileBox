@@ -15,7 +15,7 @@ try {
     $appOutput = Join-Path $repoRoot 'src/FileBox.App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
     $requiredFiles = @(
         'FileBox.exe', 'FileBox.dll', 'FileBox.deps.json', 'FileBox.runtimeconfig.json',
-        'Microsoft.UI.Xaml.dll', 'resources.pri',
+        'Microsoft.UI.Xaml.dll', 'resources.pri', 'Assets/Strings/en.json',
         'indexer/FileBox.Indexer.exe', 'indexer/FileBox.Indexer.dll',
         'indexer/FileBox.Indexer.deps.json', 'indexer/FileBox.Indexer.runtimeconfig.json'
         'hostfxr.dll', 'coreclr.dll', 'indexer/hostfxr.dll', 'indexer/coreclr.dll'

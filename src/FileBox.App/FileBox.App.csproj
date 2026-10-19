@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\FileBox.ico;Assets\FileBox.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\FileBox.ico;Assets\FileBox.png;Assets\Strings\en.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -6,12 +6,13 @@ using FileBox.Contracts;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 
 namespace FileBox.App.Views;
 
 /// <summary>容量分析・クォータ管理（04_画面設計 S06）。ゾーンの使用量、フォルダ別の内訳、大きいファイル。</summary>
-public sealed class CapacityPaneView : UserControl
+public sealed partial class CapacityPaneView : UserControl
 {
     public CapacityPaneViewModel ViewModel { get; }
     readonly IWorkspaceActions _actions;
@@ -19,6 +20,8 @@ public sealed class CapacityPaneView : UserControl
     readonly ProgressRing _ring = new() { Width = 18, Height = 18 };
     readonly TextBox _location = new() { MinWidth = 120, PlaceholderText = "調べたいフォルダのパス", VerticalContentAlignment = VerticalAlignment.Center };
     bool _showAll;
+    bool _treemap;
+    Button _cancel = null!;
 
     public CapacityPaneView(CapacityPaneViewModel viewModel, IWorkspaceActions actions)
     {
@@ -38,9 +41,10 @@ public sealed class CapacityPaneView : UserControl
         header.Children.Add(title);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         buttons.Children.Add(_ring);
+        _cancel = TextButton("", "中止", () => ViewModel.Cancel());
+        buttons.Children.Add(_cancel);
         buttons.Children.Add(TextButton("\uE8B7", "場所を選ぶ", () => _ = PickLocationAsync()));
         buttons.Children.Add(IconButton("", "更新", () => _ = ViewModel.LoadAsync()));
-        _addZone = TextButton("", "容量の上限を追加", () => _ = EditZoneAsync(null));
         Grid.SetColumn(buttons, 2);
         header.Children.Add(buttons);
         root.Children.Add(header);
@@ -58,6 +62,8 @@ public sealed class CapacityPaneView : UserControl
             if (path != null && Directory.Exists(path)) _ = ViewModel.OpenAsync(path);
             e.Handled = true;
         };
+        InitDuplicates();
+        InitCleanup();
         Render();
     }
 
@@ -74,12 +80,22 @@ public sealed class CapacityPaneView : UserControl
             Render();
     }
 
-    readonly Button _addZone;
 
     void Render()
     {
+        // 描けなかった部分があっても画面全体を止めない（原因はログに残す）
+        try { RenderCore(); }
+        catch (Exception ex)
+        {
+            AppLog.Error("容量の画面を表示できませんでした", ex);
+            _body.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Error, Message = Core.Files.FriendlyError.Explain(ex).ToString() });
+        }
+    }
+
+    void RenderCore()
+    {
         _ring.IsActive = ViewModel.IsLoading;
-        _addZone.Visibility = PolicyService.Instance.IsAdmin ? Visibility.Visible : Visibility.Collapsed;
+        _cancel.Visibility = ViewModel.IsLoading ? Visibility.Visible : Visibility.Collapsed;
         _body.Children.Clear();
 
         // 実際のディスク使用量と、ファイルの論理サイズ合計を区別して表示する。
@@ -108,12 +124,10 @@ public sealed class CapacityPaneView : UserControl
             Content = otherDrives, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
 
         _body.Children.Add(Header("この場所の容量"));
-        var navigation = new Grid { ColumnSpacing = 6 };
-        navigation.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        navigation.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        navigation.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // 入力欄は入力中の文字を保つため使い回す。入れ物ごと使い回し、別の枠へ入れ直さない
+        var navigation = _navigation;
+        navigation.Children.Clear();
         _location.Text = ViewModel.Path;
-        if (_location.Parent is Panel parentPanel) parentPanel.Children.Remove(_location);
         navigation.Children.Add(_location);
         var parent = Directory.GetParent(ViewModel.Path)?.FullName;
         var up = IconButton("\uE74A", "一つ上の容量を見る", () => { if (parent != null) _ = ViewModel.OpenAsync(parent); });
@@ -136,11 +150,22 @@ public sealed class CapacityPaneView : UserControl
             if (report.IsPartial) summary.Children.Add(Note("集計途中、または容量を取得できない項目があります。数値は取得できた分の合計です。"));
             _body.Children.Add(summary);
             _body.Children.Add(Note("ドライブの使用中容量にはシステム領域なども含まれるため、上のファイル合計とは一致しないことがあります。"));
-            _body.Children.Add(Header("フォルダ・ファイル別の内訳（容量の大きい順）"));
-            _body.Children.Add(Note("右側は容量とこの場所に占める割合です。フォルダ名を押すと、その中の内訳を表示します。"));
+            var breakdownHeader = new Grid();
+            breakdownHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            breakdownHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            breakdownHeader.Children.Add(Header("フォルダ・ファイル別の内訳（容量の大きい順）"));
+            var asMap = new ToggleButton { IsChecked = _treemap, VerticalAlignment = VerticalAlignment.Bottom, Content = TextContent("", "図で表示") }.Named("図で表示");
+            asMap.Click += (_, _) => { _treemap = asMap.IsChecked == true; Render(); };
+            Grid.SetColumn(asMap, 1);
+            breakdownHeader.Children.Add(asMap);
+            _body.Children.Add(breakdownHeader);
+            _body.Children.Add(Note(_treemap
+                ? "面積が容量の大きさです。フォルダーを押すとその中を、右クリックで開く・ごみ箱へ移動などができます。"
+                : "右側は容量とこの場所に占める割合です。フォルダ名を押すと、その中の内訳を表示します。右クリックで開く・ごみ箱へ移動などができます。"));
             if (report.Children.Count == 0) _body.Children.Add(Note(report.IsPartial ? "まだ集計できた項目がありません。時間をおいて更新してください。" : "この場所には集計対象のファイルがありません。"));
-            foreach (var item in report.Children.Take(_showAll ? int.MaxValue : 40)) _body.Children.Add(UsageRow(item, report.Total));
-            if (!_showAll && report.Children.Count > 40)
+            else if (_treemap) _body.Children.Add(TreemapView(report));
+            else foreach (var item in report.Children.Take(_showAll ? int.MaxValue : 40)) _body.Children.Add(UsageRow(item, report.Total));
+            if (!_treemap && !_showAll && report.Children.Count > 40)
                 _body.Children.Add(TextButton("\uE70D", $"残り {report.Children.Count - 40:N0} 件も表示", () => { _showAll = true; Render(); }));
 
             var largest = new Expander { Header = $"内訳の中で大きいファイル（上位 {Math.Min(20, report.Largest.Count)} 件）", IsExpanded = false,
@@ -153,15 +178,28 @@ public sealed class CapacityPaneView : UserControl
         }
         else if (ViewModel.IsLoading) _body.Children.Add(Note("容量を集計しています… 一覧の表示を待たずに別の場所へ移動できます。"));
 
+        _body.Children.Add(_duplicates);
+        _body.Children.Add(_cleanup);
+
         var limits = new Expander { Header = "容量の上限と通知（設定）", HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         var limitBody = new StackPanel { Spacing = 8 };
         if (!PolicyService.Instance.Managed) limitBody.Children.Add(Note("容量の上限は現在管理されていません。使用量の確認はそのまま利用できます。"));
         else if (ViewModel.Zones.Count == 0) limitBody.Children.Add(Note("設定されている容量の上限はありません。"));
         foreach (var zone in ViewModel.Zones) limitBody.Children.Add(ZoneRow(zone));
-        if (_addZone.Parent is Panel oldPanel) oldPanel.Children.Remove(_addZone);
-        limitBody.Children.Add(_addZone);
+        if (PolicyService.Instance.IsAdmin) limitBody.Children.Add(TextButton("", "容量の上限を追加", () => _ = EditZoneAsync(null)));
         limits.Content = limitBody;
         _body.Children.Add(limits);
+    }
+
+    readonly Grid _navigation = NavigationGrid();
+
+    static Grid NavigationGrid()
+    {
+        var grid = new Grid { ColumnSpacing = 6 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        return grid;
     }
 
     UIElement ZoneRow(ZoneDto zone)
@@ -241,6 +279,8 @@ public sealed class CapacityPaneView : UserControl
         Grid.SetColumn(bar, 1);
         Grid.SetColumnSpan(bar, 3);
         grid.Children.Add(bar);
+        grid.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        grid.RightTapped += (_, e) => { ItemMenu(item.Path, item.IsDirectory).ShowAt(grid, e.GetPosition(grid)); e.Handled = true; };
         return grid;
     }
 
@@ -356,7 +396,7 @@ public sealed class CapacityPaneView : UserControl
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         content.Children.Add(new FontIcon { Glyph = glyph, FontSize = 13 });
         content.Children.Add(new TextBlock { Text = text });
-        var b = new Button { Content = content };
+        var b = new Button { Content = content }.Named(text);
         b.Click += (_, _) => action();
         return b;
     }

@@ -329,14 +329,18 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
         ["pane"] = "folder",
         ["id"] = Id,
         ["path"] = CurrentPath,
-        ["view"] = "details",
+        ["view"] = ViewPreferences.Mode(CurrentPath).ToString().ToLowerInvariant(),
     };
+
+    /// <summary>区画を閉じた（ビューが全体の通知の購読をやめる）。</summary>
+    public event Action? Disposed;
 
     public override void Dispose()
     {
         _loadCts?.Cancel();
         _watcher?.Dispose();
         _reloadTimer?.Stop();
+        Disposed?.Invoke();
     }
 }
 

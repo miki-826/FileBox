@@ -41,6 +41,11 @@
         <StackPanel Grid.Row="1" Spacing="4" Margin="16,10">
             <TextBlock Text="新着ファイルに保存先を提案します。移動は操作したときだけ行います（自動移動ルールを除く）。" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <TextBlock x:Name="SourcesLabel" Text="{x:Bind SourcesText}" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <!-- 長く置いたままのもの（古いインストーラー・展開済みの ZIP・半年使っていないもの）。開いたときに探す -->
+            <Expander x:Name="CleanupExpander" Header="片付けの候補（古いインストーラー・展開済みの ZIP など）" Expanding="Cleanup_Expanding"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,6,0,0">
+                <StackPanel x:Name="CleanupList" Spacing="4" />
+            </Expander>
         </StackPanel>
 
         <ListView x:Name="List" Grid.Row="2" Margin="4,6,4,0" AutomationProperties.Name="振り分け待ちのファイル一覧"

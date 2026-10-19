@@ -128,11 +128,11 @@ public sealed partial class InboxPaneView : UserControl
 
     async void MoveAll_Click(object sender, RoutedEventArgs e)
     {
-        var (n, ops) = await InboxService.Instance.MoveAllConfidentAsync();
+        int n = await InboxService.Instance.MoveAllConfidentAsync();
         ViewModel.Refresh();
-        App.Window?.ShowInfo(n > 0 ? $"{n} 件を推奨先へ移動しました" : "確信度「高」の項目はありません", n > 0 ? InfoBarSeverity.Success : InfoBarSeverity.Informational,
-            n > 0 ? "元に戻す" : null,
-            async () => { foreach (var op in ops) await FileMover.UndoAsync(op); });
+        App.Window?.ShowInfo(n > 0 ? $"{n} 件を推奨先へ移動しました（移動先ごとに Ctrl+Z で戻せます）" : "確信度「高」の項目はありません",
+            n > 0 ? InfoBarSeverity.Success : InfoBarSeverity.Informational,
+            n > 0 ? "元に戻す (Ctrl+Z)" : null, () => _ = FileOperations.Instance.UndoAsync());
     }
 
     async void Settings_Click(object sender, RoutedEventArgs e)
@@ -147,4 +147,43 @@ public sealed partial class InboxPaneView : UserControl
     }
 
     static string Leaf(string path) => Path.GetFileName(path.TrimEnd('\\')) is { Length: > 0 } n ? n : path;
+
+    // ---------------------------------------------------------------- 片付けの候補
+
+    async void Cleanup_Expanding(Expander sender, ExpanderExpandingEventArgs args) => await LoadCleanupAsync();
+
+    async Task LoadCleanupAsync()
+    {
+        CleanupList.Children.Clear();
+        CleanupList.Children.Add(new ProgressRing { IsActive = true, Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Left });
+        var sources = InboxService.Instance.Sources.ToList();
+        var now = DateTime.Now;
+        var candidates = await Task.Run(() => sources.SelectMany(s => Core.Files.CleanupCandidates.ScanDownloads(s, now)).ToList());
+        CleanupList.Children.Clear();
+        if (candidates.Count == 0)
+        {
+            CleanupList.Children.Add(new TextBlock { Text = "片付けの候補はありません。", FontSize = 12 });
+            return;
+        }
+        CleanupList.Children.Add(new TextBlock { Text = $"{candidates.Count:N0} 件・合計 {Format.HumanSize(candidates.Sum(c => c.Size))}。選んでごみ箱へ移せます（Ctrl+Z で戻せます）。", FontSize = 12 });
+        var checks = new List<(CheckBox Box, string Path)>();
+        foreach (var c in candidates.Take(200))
+        {
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock { Text = $"{Path.GetFileName(c.Path)}（{Format.HumanSize(c.Size)}）", Tag = "data", TextTrimming = TextTrimming.CharacterEllipsis });
+            text.Children.Add(new TextBlock { Text = c.Reason, FontSize = 11, Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] });
+            var box = new CheckBox { Content = text, IsChecked = c.Kind != Core.Files.CleanupKind.Unused };
+            ToolTipService.SetToolTip(box, c.Path);
+            checks.Add((box, c.Path));
+            CleanupList.Children.Add(box);
+        }
+        var recycle = new Button { Content = "選んだものをごみ箱へ" };
+        recycle.Click += async (_, _) =>
+        {
+            var paths = checks.Where(c => c.Box.IsChecked == true).Select(c => c.Path).ToList();
+            if (paths.Count == 0) return;
+            if (FileOperations.Instance.Recycle(paths) > 0) { ViewModel.Refresh(); await LoadCleanupAsync(); }
+        };
+        CleanupList.Children.Add(recycle);
+    }
 }

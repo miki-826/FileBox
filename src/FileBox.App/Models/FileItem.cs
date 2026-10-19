@@ -6,8 +6,8 @@ namespace FileBox.App.Models;
 /// <summary>一覧・検索結果の1行。</summary>
 public sealed class FileItem : ObservableObject
 {
-    public required string Name { get; init; }
-    public required string FullPath { get; init; }
+    public string Name { get; init; } = "";
+    public string FullPath { get; init; } = "";
     public bool IsDirectory { get; init; }
     public bool IsDrive { get; init; }
     public long Size { get; init; }
@@ -46,6 +46,56 @@ public sealed class FileItem : ObservableObject
     public string ModifiedText => Modified?.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture) ?? "";
     public string Location => Path.GetDirectoryName(FullPath) ?? "";
     public double ItemOpacity => IsHidden ? 0.6 : 1.0;
+    public FileAttributes Attributes { get; init; }
+
+    // ---------------------------------------------------------------- 印（星・タグ・クラウドの状態）。表示のたびに読み直す
+
+    bool _isStarred;
+    string _tagsText = "";
+    string _cloudGlyph = "";
+    string _cloudColor = "";
+    string _cloudTip = "";
+
+    public bool IsStarred { get => _isStarred; set => SetProperty(ref _isStarred, value); }
+    public string TagsText { get => _tagsText; set => SetProperty(ref _tagsText, value); }
+    public string CloudGlyph { get => _cloudGlyph; set => SetProperty(ref _cloudGlyph, value); }
+    public string CloudColor { get => _cloudColor; set => SetProperty(ref _cloudColor, value); }
+    public string CloudTip { get => _cloudTip; set => SetProperty(ref _cloudTip, value); }
+
+    /// <summary>星・タグ・クラウドの状態を最新にする。</summary>
+    public void RefreshMarks()
+    {
+        IsStarred = Services.UserMarks.IsStarred(FullPath);
+        TagsText = string.Join("・", Services.UserMarks.TagsOf(FullPath));
+        var badge = IsDrive ? null : Services.CloudFiles.Badge(Services.CloudFiles.StateOf(FullPath, Attributes));
+        CloudGlyph = badge?.Glyph ?? "";
+        CloudColor = badge?.Color ?? "";
+        CloudTip = badge?.Tip ?? "";
+    }
+
+    // ---------------------------------------------------------------- 追加の列（撮影日時・長さなど。表示されたときに読む）
+
+    readonly string[] _extras = { "", "", "" };
+    public string Extra0 => _extras[0];
+    public string Extra1 => _extras[1];
+    public string Extra2 => _extras[2];
+    public string? ExtrasKey { get; set; }
+
+    public void SetExtras(string key, IReadOnlyList<string> values)
+    {
+        ExtrasKey = key;
+        for (int i = 0; i < _extras.Length; i++) _extras[i] = i < values.Count ? values[i] : "";
+        OnPropertyChanged(nameof(Extra0));
+        OnPropertyChanged(nameof(Extra1));
+        OnPropertyChanged(nameof(Extra2));
+    }
+
+    /// <summary>本文検索で一致した部分（検索結果だけ）。</summary>
+    public string? Snippet { get; init; }
+
+    /// <summary>読み上げ（UI オートメーション）で項目名と種類・印が読まれるように。</summary>
+    public override string ToString() =>
+        $"{Name}、{Services.Text.T(TypeText)}" + (IsStarred ? $"、{Services.Text.T("星付き")}" : "") + (TagsText.Length > 0 ? $"、{TagsText}" : "");
 
     public static FileItem FromInfo(FileSystemInfo info) => new()
     {
@@ -55,6 +105,7 @@ public sealed class FileItem : ObservableObject
         Size = info is FileInfo f ? f.Length : 0,
         Modified = info.LastWriteTime,
         IsHidden = (info.Attributes & FileAttributes.Hidden) != 0,
+        Attributes = info.Attributes,
     };
 }
 

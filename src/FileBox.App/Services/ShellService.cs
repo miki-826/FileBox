@@ -37,9 +37,10 @@ public static class ShellService
 
     public static void ShowProperties(string path) => SHObjectProperties(IntPtr.Zero, SHOP_FILEPATH, path, null);
 
-    /// <summary>ごみ箱へ移動（エクスプローラーと同じ確認・進捗ダイアログ）。</summary>
-    public static void Recycle(IEnumerable<string> paths)
+    /// <summary>ごみ箱へ移動（エクスプローラーと同じ確認・進捗ダイアログ）。実際にごみ箱へ移ったパスを返す。</summary>
+    public static List<string> Recycle(IEnumerable<string> paths)
     {
+        var done = new List<string>();
         foreach (var path in paths)
         {
             try
@@ -48,26 +49,62 @@ public static class ShellService
                     FileSystem.DeleteDirectory(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin, UICancelOption.DoNothing);
                 else
                     FileSystem.DeleteFile(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin, UICancelOption.DoNothing);
+                if (!Directory.Exists(path) && !File.Exists(path)) done.Add(path);
             }
-            catch (Exception ex) { App.ShowError($"削除できませんでした: {path}", ex); }
+            catch (Exception ex) { App.ShowError($"削除できませんでした: {Path.GetFileName(path.TrimEnd('\\'))}", ex, path); }
         }
+        return done;
     }
 
-    public static void Rename(string path, string newName)
+    /// <summary>名前を変える。変えた後のパスを返す。大文字小文字だけの変更もできる。</summary>
+    public static string Rename(string path, string newName)
     {
-        string target = Path.Combine(Path.GetDirectoryName(path)!, newName);
-        if (Directory.Exists(path)) Directory.Move(path, target);
+        string target = Path.Combine(Path.GetDirectoryName(path.TrimEnd('\\'))!, newName);
+        if (Directory.Exists(path))
+        {
+            // 大文字小文字だけの変更は Directory.Move が失敗するため一時名を経由する
+            if (string.Equals(path.TrimEnd('\\'), target, StringComparison.OrdinalIgnoreCase) && !string.Equals(path.TrimEnd('\\'), target, StringComparison.Ordinal))
+            {
+                string temp = target + ".filebox-" + Guid.NewGuid().ToString("N")[..6];
+                Directory.Move(path, temp);
+                Directory.Move(temp, target);
+            }
+            else Directory.Move(path, target);
+        }
         else File.Move(path, target);
+        return target;
     }
 
-    public static string CreateFolder(string parent)
+    public static string CreateFolder(string parent, string name = "新しいフォルダー")
     {
-        string name = "新しいフォルダー";
-        string path = Path.Combine(parent, name);
-        for (int i = 2; Directory.Exists(path) || File.Exists(path); i++)
-            path = Path.Combine(parent, $"{name} ({i})");
+        string path = FileBox.Core.Files.UniqueName.Path(Path.Combine(parent, name));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    /// <summary>ターミナル（Windows Terminal があればそれ、無ければ PowerShell）をこのフォルダで開く。</summary>
+    public static void OpenTerminal(string folder)
+    {
+        try
+        {
+            string? wt = FindOnPath("wt.exe");
+            // 末尾の \ が引用符を打ち消さないよう「\.」で終える
+            if (wt != null) Process.Start(new ProcessStartInfo(wt, $"-d \"{folder.TrimEnd('\\')}\\.\"") { UseShellExecute = false });
+            else Process.Start(new ProcessStartInfo("powershell.exe", "-NoExit") { UseShellExecute = true, WorkingDirectory = folder });
+        }
+        catch (Exception ex) { App.ShowError("ターミナルを開けませんでした", ex); }
+    }
+
+    static string? FindOnPath(string exe)
+    {
+        string local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps", exe);
+        if (File.Exists(local)) return local;
+        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            try { string p = Path.Combine(dir.Trim(), exe); if (File.Exists(p)) return p; }
+            catch (ArgumentException) { }
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------- クリップボード（エクスプローラーと相互にコピー/貼り付け）
@@ -132,15 +169,19 @@ public static class ShellService
         return (items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToList(), content.RequestedOperation.HasFlag(DataPackageOperation.Move));
     }
 
-    /// <summary>コピー/移動（Windows 標準の進捗・上書き確認ダイアログ付き）。同じフォルダへのコピーは「 - コピー」を付ける。</summary>
-    public static void Transfer(IReadOnlyList<string> paths, string destination, bool move)
+    /// <summary>
+    /// コピー/移動（Windows 標準の進捗・一時停止・中止・上書き確認ダイアログ付き）。同じフォルダへのコピーは「 - コピー」を付ける。
+    /// 実際に行えた (元, 先) を返す（中止・スキップしたものは含まない）。
+    /// </summary>
+    public static List<(string From, string To)> Transfer(IReadOnlyList<string> paths, string destination, bool move)
     {
+        var done = new List<(string, string)>();
         foreach (var path in paths)
         {
             string name = Path.GetFileName(path.TrimEnd('\\'));
             string target = Path.Combine(destination, name);
             bool same = string.Equals(Path.GetDirectoryName(path.TrimEnd('\\')), destination.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
-            if (same && !move) target = UniqueCopyName(target);
+            if (same && !move) target = FileBox.Core.Files.UniqueName.Copy(target);
             else if (same) continue;
             try
             {
@@ -154,20 +195,13 @@ public static class ShellService
                     if (move) FileSystem.MoveFile(path, target, UIOption.AllDialogs, UICancelOption.DoNothing);
                     else FileSystem.CopyFile(path, target, UIOption.AllDialogs, UICancelOption.DoNothing);
                 }
+                bool arrived = File.Exists(target) || Directory.Exists(target);
+                bool left = !move || (!File.Exists(path) && !Directory.Exists(path));
+                if (arrived && left) done.Add((path, target));
             }
-            catch (Exception ex) { App.ShowError($"{(move ? "移動" : "コピー")}できませんでした: {name}", ex); }
+            catch (Exception ex) { App.ShowError($"{(move ? "移動" : "コピー")}できませんでした: {name}", ex, path); }
         }
-    }
-
-    static string UniqueCopyName(string path)
-    {
-        string dir = Path.GetDirectoryName(path)!;
-        string stem = Path.GetFileNameWithoutExtension(path);
-        string ext = Path.GetExtension(path);
-        string candidate = Path.Combine(dir, $"{stem} - コピー{ext}");
-        for (int i = 2; File.Exists(candidate) || Directory.Exists(candidate); i++)
-            candidate = Path.Combine(dir, $"{stem} - コピー ({i}){ext}");
-        return candidate;
+        return done;
     }
 
     // ---------------------------------------------------------------- アドレス解決

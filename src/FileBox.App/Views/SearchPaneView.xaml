@@ -13,14 +13,23 @@
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="CornerRadius" Value="6" />
         </Style>
+        <Style x:Key="HeaderButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="4,6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
     </UserControl.Resources>
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
         <Grid Padding="16,14" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
             <FontIcon Glyph="&#xE721;" FontSize="20" />
             <StackPanel Grid.Column="1" Spacing="4">
-                <TextBlock Text="{x:Bind ViewModel.Query, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                <TextBlock Tag="data" Text="{x:Bind ViewModel.Query, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
@@ -32,24 +41,53 @@
         <InfoBar Grid.Row="1" Severity="Warning" IsClosable="False" Message="{x:Bind ViewModel.ErrorText, Mode=OneWay}"
                  IsOpen="True" Visibility="{x:Bind views:Converters.VisibleIf(ViewModel.ErrorText), Mode=OneWay}" />
 
-        <ListView x:Name="List" Grid.Row="2" Margin="4,6,4,0" AutomationProperties.Name="検索結果一覧"
+        <!-- 結果の絞り込み（種類・更新日時・サイズ）。押すと検索欄に条件が入る -->
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+            <StackPanel x:Name="FacetPanel" Orientation="Horizontal" Spacing="6" Padding="12,8,12,4" />
+        </ScrollViewer>
+
+        <!-- 列ヘッダー（クリックで並べ替え） -->
+        <Grid x:Name="HeaderGrid" Grid.Row="3" Margin="4,4,4,0" Padding="10,0" ColumnDefinitions="42,*,90,130,40"
+              Background="{ThemeResource LayerFillColorAltBrush}"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Button x:Name="NameHeader" Grid.Column="1" Style="{StaticResource HeaderButton}" Tag="Name" Click="Sort_Click" Content="名前・場所" />
+            <Button x:Name="SizeHeader" Grid.Column="2" Style="{StaticResource HeaderButton}" Tag="Size" Click="Sort_Click" Content="サイズ" HorizontalContentAlignment="Right" />
+            <Button x:Name="ModifiedHeader" Grid.Column="3" Style="{StaticResource HeaderButton}" Tag="Modified" Click="Sort_Click" Content="更新日時" />
+        </Grid>
+
+        <ListView x:Name="List" Grid.Row="4" Margin="4,4,4,0" AutomationProperties.Name="検索結果一覧"
                   ItemsSource="{x:Bind ViewModel.Results, Mode=OneWay}"
                   SelectionMode="Extended"
                   ItemContainerStyle="{StaticResource CompactItem}"
                   DoubleTapped="List_DoubleTapped"
                   SelectionChanged="List_SelectionChanged"
                   RightTapped="List_RightTapped"
-                  KeyDown="List_KeyDown">
+                  ContextRequested="List_ContextRequested"
+                  KeyDown="List_KeyDown"
+                  SizeChanged="List_SizeChanged"
+                  ContainerContentChanging="List_ContainerContentChanging">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:FileItem">
-                    <Grid ColumnDefinitions="42,*,90,130">
+                    <Grid ColumnDefinitions="42,*,90,130,40">
                         <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}" HorizontalAlignment="Left" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0" Spacing="3">
-                            <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
-                            <TextBlock Text="{x:Bind Location}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Location}" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <!-- 名前は一致した部分を太字にするためコードで入れる（List_ContainerContentChanging） -->
+                                <TextBlock x:Name="NameText" Tag="data" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
+                                <FontIcon Glyph="&#xE735;" FontSize="12" Foreground="#E2A300" Visibility="{x:Bind views:Converters.Visible(IsStarred), Mode=OneWay}" />
+                                <TextBlock Tag="data" Text="{x:Bind TagsText, Mode=OneWay}" FontSize="11" VerticalAlignment="Center" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Tag="data" Text="{x:Bind Location}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Location}" />
+                            <TextBlock Tag="data" Text="{x:Bind Snippet}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                       Visibility="{x:Bind views:Converters.VisibleIf(Snippet)}" FontStyle="Italic" />
                         </StackPanel>
                         <TextBlock Grid.Column="2" Text="{x:Bind HumanSize, Mode=OneWay}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <TextBlock Grid.Column="3" Text="{x:Bind ModifiedText}" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <!-- マウスを乗せたときだけ出す「場所を開く」 -->
+                        <Button Grid.Column="4" Opacity="0" Padding="6" Background="Transparent" BorderThickness="0" Click="Reveal_Click"
+                                AutomationProperties.Name="ファイルの場所を開く" ToolTipService.ToolTip="ファイルの場所を開く">
+                            <FontIcon Glyph="&#xE838;" FontSize="14" />
+                        </Button>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

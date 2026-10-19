@@ -53,7 +53,7 @@ public static class RecycleBin
     {
         string folder = item.OriginalFolder;
         if (folder.Length > 0) Directory.CreateDirectory(folder);
-        string target = File.Exists(item.OriginalPath) || Directory.Exists(item.OriginalPath) ? FileMover.UniquePath(item.OriginalPath) : item.OriginalPath;
+        string target = File.Exists(item.OriginalPath) || Directory.Exists(item.OriginalPath) ? FileBox.Core.Files.UniqueName.Path(item.OriginalPath) : item.OriginalPath;
         if (item.IsDirectory) Directory.Move(item.DataPath, target);
         else File.Move(item.DataPath, target);
         TryDelete(item.InfoPath);

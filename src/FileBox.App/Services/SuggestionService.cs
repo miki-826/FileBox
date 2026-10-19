@@ -22,10 +22,14 @@ public sealed class SuggestionService : IFolderSource
         {
             FallbackRoot = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             PreferredRoots = PreferredRoots(),
+            ExcludedFolders = store.GetSuggestExcluded(),
         };
     }
 
     public static void Initialize(UserStore store) => _instance ??= new SuggestionService(store);
+
+    /// <summary>「候補に出さない場所」を変えたあとに読み直す。</summary>
+    public void ReloadExclusions() => _engine.ExcludedFolders = _store.GetSuggestExcluded();
 
     /// <summary>利用者のデータ置き場: ユーザーフォルダと、システム以外のドライブ（データ用・クラウド同期）。</summary>
     static List<string> PreferredRoots()

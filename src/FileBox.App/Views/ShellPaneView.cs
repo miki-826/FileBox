@@ -127,7 +127,7 @@ public sealed class ShellPaneView : UserControl
         }
         catch (Exception ex)
         {
-            if (version == _loadVersion) ShowEmpty($"読み込めませんでした: {ex.Message}");
+            if (version == _loadVersion) ShowEmpty($"読み込めませんでした: {(ex is IOException ? ex.Message : Core.Files.FriendlyError.Explain(ex).ToString())}");
         }
         finally
         {
@@ -169,6 +169,7 @@ public sealed class ShellPaneView : UserControl
             address.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { OpenAddress(address.Text); e.Handled = true; } };
             _buttons.Children.Add(address);
             _buttons.Children.Add(TextButton("\uE8AD", "開く", () => OpenAddress(address.Text)));
+            _buttons.Children.Add(IconButton("\uE8CE", "ネットワークドライブの割り当て", () => _ = MapDriveAsync(address.Text.Trim().StartsWith(@"\\", StringComparison.Ordinal) ? address.Text.Trim() : null)));
         }
         _buttons.Children.Add(IconButton("\uE72C", "最新の情報に更新", () => _ = LoadAsync()));
     }
@@ -292,6 +293,8 @@ public sealed class ShellPaneView : UserControl
                 Add("新しいタブで開く", "\uE8A7", () => _actions.OpenInNewTab(place.Path));
                 Add("お気に入りに追加", "\uE734", () => _actions.AddFavorite(place.Path));
             }
+            if (place.Kind == NetworkPlaceKind.Share) Add("ネットワークドライブとして割り当て…", "\uE8CE", () => _ = MapDriveAsync(place.Path));
+            if (place.Kind == NetworkPlaceKind.Drive) Add("切断", "\uE8CD", () => _ = DisconnectAsync(place.Path));
             Add("パスをコピー", "\uE8C8", () => ShellService.CopyText(place.Path));
         }
         menu.ShowAt(_list, e.GetPosition(_list));
@@ -314,11 +317,59 @@ public sealed class ShellPaneView : UserControl
         else _actions.RevealInFolderPane(ViewModel, path);
     }
 
+    /// <summary>ネットワークドライブの割り当て（サインイン時の再接続は既定でオフ）。</summary>
+    async Task MapDriveAsync(string? share)
+    {
+        var store = SettingsDialog.Store;
+        if (store == null) return;
+        var letters = NetworkDrives.FreeLetters();
+        if (letters.Count == 0) { App.Window?.ShowInfo("空いているドライブ文字がありません", InfoBarSeverity.Warning); return; }
+        var letter = new ComboBox { Header = "ドライブ", MinWidth = 100 };
+        foreach (var l in letters) letter.Items.Add($"{l}:");
+        letter.SelectedIndex = 0;
+        var path = new TextBox { Header = "共有フォルダー", Text = share ?? "", PlaceholderText = @"\\サーバー名\共有名", MinWidth = 300 };
+        var reconnect = new CheckBox { Content = "サインイン時に再接続する（Windows に記憶させる）" };
+        var user = new TextBox { Header = "別のユーザー名（空なら今のアカウント）", PlaceholderText = @"例: サーバー名\ユーザー", MinWidth = 300 };
+        var password = new PasswordBox { Header = "パスワード", MinWidth = 300 };
+        var other = new Expander { Header = "別の資格情報で接続", Content = new StackPanel { Spacing = 8, Children = { user, password } }, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { letter, path } };
+        var panel = new StackPanel { Spacing = 10, Children = { row, reconnect, other,
+            new TextBlock { Text = "割り当てたドライブは、設定の「FileBox が変更した Windows の設定」から切断できます。", FontSize = 12, TextWrapping = TextWrapping.Wrap, Foreground = Brush("TextFillColorSecondaryBrush") } } };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot, Title = "ネットワークドライブの割り当て", Content = panel,
+            PrimaryButtonText = "割り当て", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary || path.Text.Trim().Length == 0) return;
+        char drive = letters[Math.Max(0, letter.SelectedIndex)];
+        string target = path.Text.Trim();
+        bool remember = reconnect.IsChecked == true;
+        string? name = user.Text.Trim().Length > 0 ? user.Text.Trim() : null, secret = password.Password.Length > 0 ? password.Password : null;
+        var result = await Task.Run(() => NetworkDrives.Map(store, drive, target, remember, name, secret));
+        if (result is int code) App.Window?.ShowInfo($"割り当てられませんでした: {Core.Files.FriendlyError.FromWin32(code)}", InfoBarSeverity.Warning);
+        else
+        {
+            App.Window?.ShowInfo($"{drive}: に {target} を割り当てました", InfoBarSeverity.Success, "開く", () => _actions.OpenInNewTab($"{drive}:\\"));
+            await LoadAsync();
+        }
+    }
+
+    async Task DisconnectAsync(string drive)
+    {
+        var store = SettingsDialog.Store;
+        if (store == null) return;
+        if (!await Dialogs.ConfirmAsync(XamlRoot, $"{drive.TrimEnd('\\')} を切断しますか？", "共有フォルダーの中身は消えません。もう一度割り当てれば使えます。", "切断")) return;
+        if (await Task.Run(() => NetworkDrives.Disconnect(store, drive)) is int code)
+            App.Window?.ShowInfo($"切断できませんでした: {Core.Files.FriendlyError.FromWin32(code)}", InfoBarSeverity.Warning);
+        await LoadAsync();
+    }
+
     async Task RestoreAsync(List<RecycleItem> items)
     {
         if (items.Count == 0) return;
         int done = 0;
         string? last = null;
+        var restored = new List<(string, string)>();
         foreach (var item in items)
         {
             if (!Guard.Can(Permission.Create, item.OriginalFolder, "move")) continue;
@@ -326,10 +377,13 @@ public sealed class ShellPaneView : UserControl
             {
                 last = await Task.Run(() => RecycleBin.Restore(item));
                 Guard.Done("move", item.DataPath, last, "ごみ箱から元に戻す");
+                restored.Add((last, last));
                 done++;
             }
-            catch (Exception ex) { App.ShowError($"「{item.Name}」を元に戻せませんでした", ex); }
+            catch (Exception ex) { App.ShowError($"「{item.Name}」を元に戻せませんでした", ex, item.OriginalPath); }
         }
+        // 元に戻したことも Ctrl+Z で取り消せる（もう一度ごみ箱へ）
+        FileOperations.Instance.Journal.Record(new Core.Files.FileOperation(Core.Files.OperationKind.Restore, restored));
         await LoadAsync();
         if (done > 0)
             App.Window?.ShowInfo($"{done} 個の項目を元の場所に戻しました", InfoBarSeverity.Success,
@@ -380,7 +434,7 @@ public sealed class ShellPaneView : UserControl
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         content.Children.Add(new FontIcon { Glyph = glyph, FontSize = 16 });
         content.Children.Add(new TextBlock { Text = text });
-        var b = new Button { Content = content, MinHeight = 36 };
+        var b = new Button { Content = content, MinHeight = 36 }.Named(text);
         if (accent) b.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         b.Click += (_, _) => action();
         return b;

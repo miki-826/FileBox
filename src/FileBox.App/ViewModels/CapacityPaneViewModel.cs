@@ -86,6 +86,14 @@ public sealed partial class CapacityPaneViewModel : PaneViewModel
         return LoadAsync();
     }
 
+    /// <summary>集計を途中でやめる（ここまでの結果は残らない。「更新」でやり直せる）。</summary>
+    public void Cancel()
+    {
+        _loadCts?.Cancel();
+        IsLoading = false;
+        ErrorText ??= "集計を中止しました。「更新」でやり直せます。";
+    }
+
     public override void Dispose() => _loadCts?.Cancel();
 
     public override JsonObject Serialize() => new() { ["pane"] = "capacity", ["id"] = Id, ["path"] = Path };

@@ -48,7 +48,7 @@ public static class NetworkBrowser
         int status = NetShareEnum(@"\\" + host, 1, out var buffer, MAX_PREFERRED_LENGTH, out int read, out _, IntPtr.Zero);
         try
         {
-            if (status != 0) throw new IOException($"共有フォルダを取得できませんでした（エラー {status}）");
+            if (status != 0) throw new IOException(Core.Files.FriendlyError.FromWin32(status).ToString());
             int size = Marshal.SizeOf<SHARE_INFO_1>();
             for (int i = 0; i < read; i++)
             {

@@ -1,19 +1,15 @@
+using FileBox.Core.Files;
+
 namespace FileBox.App.Services;
 
-/// <summary>移動1回分（元に戻す用）。</summary>
-public sealed record MoveOperation(IReadOnlyList<(string From, string To)> Moves, string? CreatedFolder);
-
 /// <summary>
-/// FileBox 経由の移動。同名があれば「名前 (2).ext」にずらし、直前の操作を元に戻せるようにする。
+/// 確認画面を出さない移動（保存先の提案・受け取りボックス用）。同名があれば「名前 (2).ext」にずらす。
+/// 権限の確認・監査・元に戻すための記録は FileOperations が行う。
 /// </summary>
 public static class FileMover
 {
-    static MoveOperation? _last;
-
-    public static MoveOperation? LastOperation => _last;
-
     /// <summary>files を targetFolder へ移動する（フォルダが無ければ作成）。失敗した項目は errors に入る。</summary>
-    public static Task<(MoveOperation Operation, List<string> Errors)> MoveAsync(IReadOnlyList<string> files, string targetFolder) =>
+    public static Task<(FileOperation Operation, string? CreatedFolder, List<string> Errors)> MoveAsync(IReadOnlyList<string> files, string targetFolder) =>
         Task.Run(() =>
         {
             var moves = new List<(string, string)>();
@@ -28,65 +24,32 @@ public static class FileMover
             {
                 try
                 {
-                    string dest = UniquePath(Path.Combine(targetFolder, Path.GetFileName(src.TrimEnd('\\'))));
-                    if (Directory.Exists(src))
-                    {
-                        if (string.Equals(Path.GetPathRoot(src), Path.GetPathRoot(dest), StringComparison.OrdinalIgnoreCase))
-                            Directory.Move(src, dest);
-                        else
-                            Microsoft.VisualBasic.FileIO.FileSystem.MoveDirectory(src, dest);
-                    }
-                    else
-                    {
-                        File.Move(src, dest);
-                    }
+                    string dest = UniqueName.Path(Path.Combine(targetFolder, Path.GetFileName(src.TrimEnd('\\'))));
+                    Move(src, dest);
                     moves.Add((src, dest));
                 }
                 catch (Exception ex)
                 {
-                    errors.Add($"{Path.GetFileName(src)}: {ex.Message}");
+                    errors.Add($"{Path.GetFileName(src)}: {FriendlyError.Explain(ex)}");
+                    AppLog.Error($"移動できませんでした: {src}", ex);
                 }
             }
-            var op = new MoveOperation(moves, created);
-            if (moves.Count > 0) _last = op;
-            return (op, errors);
+            return (new FileOperation(OperationKind.Move, moves), created, errors);
         });
 
-    /// <summary>直前の移動を元に戻す。作成したフォルダは空なら削除する。</summary>
-    public static Task<int> UndoAsync(MoveOperation op) =>
-        Task.Run(() =>
-        {
-            int restored = 0;
-            foreach (var (from, to) in op.Moves.Reverse())
-            {
-                try
-                {
-                    if (Directory.Exists(to)) Directory.Move(to, UniquePath(from));
-                    else if (File.Exists(to)) File.Move(to, UniquePath(from));
-                    else continue;
-                    restored++;
-                }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
-            }
-            if (op.CreatedFolder is { } dir)
-            {
-                try { if (Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); }
-                catch (Exception) { }
-            }
-            if (ReferenceEquals(_last, op)) _last = null;
-            return restored;
-        });
-
-    public static string UniquePath(string path)
+    /// <summary>1 件を移動する（別のドライブのフォルダはコピー＋削除になる）。</summary>
+    public static void Move(string src, string dest)
     {
-        if (!File.Exists(path) && !Directory.Exists(path)) return path;
-        string dir = Path.GetDirectoryName(path)!;
-        string stem = Path.GetFileNameWithoutExtension(path);
-        string ext = Path.GetExtension(path);
-        for (int i = 2; ; i++)
+        if (Directory.Exists(src))
         {
-            string candidate = Path.Combine(dir, $"{stem} ({i}){ext}");
-            if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
+            if (string.Equals(Path.GetPathRoot(src), Path.GetPathRoot(dest), StringComparison.OrdinalIgnoreCase))
+                Directory.Move(src, dest);
+            else
+                Microsoft.VisualBasic.FileIO.FileSystem.MoveDirectory(src, dest);
+        }
+        else
+        {
+            File.Move(src, dest);
         }
     }
 }

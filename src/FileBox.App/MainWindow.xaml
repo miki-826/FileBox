@@ -131,6 +131,7 @@
                             AutomationProperties.Name="ファイルとフォルダを検索"
                             PlaceholderText="PC 全体を検索（Ctrl+F）"
                             QueryIcon="Find"
+                            UpdateTextOnSelect="False"
                             TextChanged="SearchBox_TextChanged"
                             QuerySubmitted="SearchBox_QuerySubmitted"
                             SuggestionChosen="SearchBox_SuggestionChosen"
@@ -238,6 +239,13 @@
                     </Grid>
                     <ListView x:Name="RecentList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
 
+                    <!-- 星・タグ（FileBox の中だけの印）。印を付けたものがあるときだけ表示 -->
+                    <Grid x:Name="TagHeader" Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource SidebarHeader}" Text="星・タグ" />
+                        <Button x:Name="TagToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
+                    </Grid>
+                    <ListView x:Name="TagList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
+
                     <Grid Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto">
                         <TextBlock Style="{StaticResource SidebarHeader}" Text="ドライブと場所" />
                         <Button x:Name="DriveToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
@@ -290,13 +298,19 @@
                             <TextBlock Text="ユーザーと権限" FontSize="14" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <Button Style="{StaticResource SidebarFooterButton}" Click="Settings_Click"
-                            AutomationProperties.Name="エクスプローラー置き換え・リンク・表示" ToolTipService.ToolTip="エクスプローラー置き換え・リンク・表示">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE713;" FontSize="18" Foreground="#5B6B7F" />
-                            <TextBlock Text="設定" FontSize="14" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="2">
+                        <Button x:Name="SettingsButton" Style="{StaticResource SidebarFooterButton}" Click="Settings_Click"
+                                AutomationProperties.Name="エクスプローラー置き換え・表示・言語・データ" ToolTipService.ToolTip="エクスプローラー置き換え・表示・言語・データ">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE713;" FontSize="18" Foreground="#5B6B7F" />
+                                <TextBlock Text="設定" FontSize="14" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="1" Style="{StaticResource SidebarFooterButton}" Click="Help_Click" MinWidth="42"
+                                AutomationProperties.Name="ヘルプ（ショートカット一覧・使い方の案内）" ToolTipService.ToolTip="ヘルプ（ショートカット一覧・使い方の案内）(F1)">
+                            <FontIcon Glyph="&#xE897;" FontSize="18" Foreground="#5B6B7F" />
+                        </Button>
+                    </Grid>
             </StackPanel>
             </Grid>
 
