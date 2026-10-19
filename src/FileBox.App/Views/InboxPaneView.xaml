@@ -60,8 +60,8 @@
             </ListView.GroupStyle>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="services:InboxItem">
-                    <Grid ColumnDefinitions="34,*,Auto" ColumnSpacing="8">
-                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="22" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="{x:Bind views:Converters.ItemBrush(FullPath, Extension, x:False, x:False)}" />
+                    <Grid ColumnDefinitions="42,*,Auto" ColumnSpacing="8">
+                        <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" HorizontalAlignment="Left" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
                             <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
                             <TextBlock Text="{x:Bind Detail}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Detail}" />

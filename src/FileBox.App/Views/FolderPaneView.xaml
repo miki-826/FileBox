@@ -39,9 +39,9 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
         <!-- ナビゲーション + アドレスバー -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" Padding="8,10" ColumnSpacing="2">
+        <Grid x:Name="NavigationRow" Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,*" Padding="8,10" ColumnSpacing="2">
             <Button x:Name="BackButton" Style="{StaticResource NavButton}" Click="Back_Click" AutomationProperties.Name="戻る (Alt+←)" ToolTipService.ToolTip="戻る (Alt+←)">
                 <FontIcon Glyph="&#xE72B;" FontSize="16" />
             </Button>
@@ -67,22 +67,25 @@
                          PlaceholderText="パス・%USERPROFILE%・shell:Downloads を入力" />
             </Grid>
 
-            <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="2">
-                <Button Style="{StaticResource NavButton}" Click="NewFolder_Click" AutomationProperties.Name="新しいフォルダー (Ctrl+Shift+N)" ToolTipService.ToolTip="新しいフォルダー (Ctrl+Shift+N)">
-                    <FontIcon Glyph="&#xE8F4;" FontSize="16" />
-                </Button>
-                <ToggleButton x:Name="GroupButton" Style="{StaticResource NavToggle}" Click="Group_Click"
-                              AutomationProperties.Name="日付でまとめる（今日・昨日・今週・先週…）" ToolTipService.ToolTip="日付でまとめる（今日・昨日・今週・先週…）">
-                    <FontIcon Glyph="&#xE787;" FontSize="16" />
-                </ToggleButton>
-                <Button Style="{StaticResource NavButton}" Click="Preview_Click" AutomationProperties.Name="プレビューと詳細 (Space)" ToolTipService.ToolTip="プレビューと詳細 (Space)">
-                    <FontIcon Glyph="&#xE8A1;" FontSize="16" />
-                </Button>
-            </StackPanel>
         </Grid>
 
+        <!-- 操作は名前付きで一覧の直上に集約。狭い区画では CommandBar のメニューへ移る。 -->
+        <CommandBar Grid.Row="1" DefaultLabelPosition="Right" IsDynamicOverflowEnabled="True" OverflowButtonVisibility="Auto"
+                    Background="Transparent" HorizontalAlignment="Left" Padding="4,2" AutomationProperties.Name="ファイル操作">
+            <AppBarButton x:Name="NewFolderButton" Label="新規フォルダ" Icon="NewFolder" Click="NewFolder_Click" ToolTipService.ToolTip="新しいフォルダー (Ctrl+Shift+N)" />
+            <AppBarSeparator />
+            <AppBarButton x:Name="CutButton" Label="切り取り" Icon="Cut" Click="Cut_Click" ToolTipService.ToolTip="切り取り (Ctrl+X)" />
+            <AppBarButton x:Name="CopyButton" Label="コピー" Icon="Copy" Click="Copy_Click" ToolTipService.ToolTip="コピー (Ctrl+C)" />
+            <AppBarButton x:Name="PasteButton" Label="貼り付け" Icon="Paste" Click="Paste_Click" ToolTipService.ToolTip="貼り付け (Ctrl+V)" />
+            <AppBarButton x:Name="RenameButton" Label="名前の変更" Icon="Rename" Click="Rename_Click" ToolTipService.ToolTip="名前の変更 (F2)" />
+            <AppBarButton x:Name="DeleteButton" Label="削除" Icon="Delete" Click="Delete_Click" ToolTipService.ToolTip="ごみ箱へ移動 (Delete)" />
+            <AppBarSeparator />
+            <AppBarToggleButton x:Name="GroupButton" Label="日付でまとめる" Icon="Calendar" Click="Group_Click" />
+            <AppBarButton Label="プレビュー" Icon="Preview" Click="Preview_Click" ToolTipService.ToolTip="プレビューと詳細 (Space)" />
+        </CommandBar>
+
         <!-- 列ヘッダー（クリックで並べ替え） -->
-        <Grid x:Name="HeaderGrid" Grid.Row="1" Margin="4,0,4,0" Padding="8,0" ColumnDefinitions="34,*,150,140,110"
+        <Grid x:Name="HeaderGrid" Grid.Row="2" Margin="4,0,4,0" Padding="8,0" ColumnDefinitions="42,*,150,140,110"
               Background="{ThemeResource LayerFillColorAltBrush}"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
             <Button x:Name="NameHeader" Grid.Column="1" Style="{StaticResource HeaderButton}" Click="SortName_Click" Content="名前" />
@@ -91,7 +94,7 @@
             <Button x:Name="SizeHeader" Grid.Column="4" Style="{StaticResource HeaderButton}" Click="SortSize_Click" Content="サイズ" HorizontalContentAlignment="Right" />
         </Grid>
 
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="3">
             <ListView x:Name="List" Margin="4,4,4,0" AutomationProperties.Name="フォルダ内のファイル一覧"
                       SelectionMode="Extended"
                       ItemContainerStyle="{StaticResource CompactItem}"
@@ -125,8 +128,8 @@
                 </ListView.GroupStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:FileItem">
-                        <Grid ColumnDefinitions="34,*,150,140,110" Opacity="{x:Bind ItemOpacity}">
-                            <FontIcon Glyph="{x:Bind Glyph}" FontSize="20" Foreground="{x:Bind views:Converters.ItemBrush(FullPath, Extension, IsDirectory, IsDrive)}" HorizontalAlignment="Left" />
+                        <Grid ColumnDefinitions="42,*,150,140,110" Opacity="{x:Bind ItemOpacity}">
+                            <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}" HorizontalAlignment="Left" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
                                 <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
                                 <ProgressBar Visibility="{x:Bind views:Converters.Visible(IsDrive)}" Value="{x:Bind views:Converters.Percent(DriveUsage)}"

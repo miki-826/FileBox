@@ -42,8 +42,8 @@
                   KeyDown="List_KeyDown">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:FileItem">
-                    <Grid ColumnDefinitions="34,*,90,130">
-                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="20" Foreground="{x:Bind views:Converters.ItemBrush(FullPath, Extension, IsDirectory, IsDrive)}" HorizontalAlignment="Left" />
+                    <Grid ColumnDefinitions="42,*,90,130">
+                        <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}" HorizontalAlignment="Left" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0" Spacing="3">
                             <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
                             <TextBlock Text="{x:Bind Location}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Location}" />

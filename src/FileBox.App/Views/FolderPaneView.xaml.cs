@@ -78,8 +78,7 @@ public sealed partial class FolderPaneView : UserControl
     /// <summary>タブに区画が1つのときは、上の共通バー（戻る・アドレス）を使うので区画内のナビゲーションを隠す。</summary>
     public void SetNavigationVisible(bool visible)
     {
-        var v = visible ? Visibility.Visible : Visibility.Collapsed;
-        BackButton.Visibility = ForwardButton.Visibility = UpButton.Visibility = RefreshButton.Visibility = AddressArea.Visibility = v;
+        NavigationRow.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void UpdateChrome()
@@ -93,7 +92,35 @@ public sealed partial class FolderPaneView : UserControl
         ModifiedHeader.Content = "更新日時" + (ViewModel.Sort == SortColumn.Modified ? arrow : "");
         TypeHeader.Content = "種類" + (ViewModel.Sort == SortColumn.Type ? arrow : "");
         SizeHeader.Content = "サイズ" + (ViewModel.Sort == SortColumn.Size ? arrow : "");
+        UpdateCommandButtons();
     }
+
+    void UpdateCommandButtons()
+    {
+        var selected = Selected;
+        bool editable = selected.Count > 0 && selected.All(i => !i.IsDrive);
+        CutButton.IsEnabled = CopyButton.IsEnabled = DeleteButton.IsEnabled = editable;
+        RenameButton.IsEnabled = editable && selected.Count == 1;
+        NewFolderButton.IsEnabled = PasteButton.IsEnabled = !ViewModel.IsPc;
+    }
+
+    async void Cut_Click(object sender, RoutedEventArgs e) => await CopySelectionAsync(cut: true);
+    async void Copy_Click(object sender, RoutedEventArgs e) => await CopySelectionAsync(cut: false);
+    async Task CopySelectionAsync(bool cut)
+    {
+        var paths = Selected.Where(i => !i.IsDrive).Select(i => i.FullPath).ToList();
+        if (paths.Count > 0) await ShellService.CopyToClipboardAsync(paths, cut);
+    }
+    async void Paste_Click(object sender, RoutedEventArgs e)
+    {
+        try { await PasteAsync(); }
+        catch (Exception ex) { App.ShowError("貼り付けできませんでした", ex); }
+    }
+    async void Rename_Click(object sender, RoutedEventArgs e)
+    {
+        if (Selected is { Count: 1 } items && !items[0].IsDrive) await RenameAsync(items[0]);
+    }
+    void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
 
     void OnItemsReloaded()
     {
@@ -239,6 +266,7 @@ public sealed partial class FolderPaneView : UserControl
     {
         _actions.ActivatePane(ViewModel);
         ViewModel.OnSelectionChanged(Selected);
+        UpdateCommandButtons();
     }
 
     void List_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)

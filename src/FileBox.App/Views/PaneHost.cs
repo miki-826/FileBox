@@ -132,8 +132,23 @@ public sealed class PaneHost : Grid
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(title);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 0, Tag = "buttons" };
-        buttons.Children.Add(SmallButton(SplitIcon(vertical: false), "左右に分割 (Ctrl+\\)", () => _actions.SplitPane(pane, Orientation.Horizontal)));
-        buttons.Children.Add(SmallButton(SplitIcon(vertical: true), "上下に分割 (Ctrl+Shift+\\)", () => _actions.SplitPane(pane, Orientation.Vertical)));
+        var splitMenu = new MenuFlyout();
+        void AddSplit(string label, Orientation orientation)
+        {
+            var item = new MenuFlyoutItem { Text = label };
+            item.Click += (_, _) => _actions.SplitPane(pane, orientation);
+            splitMenu.Items.Add(item);
+        }
+        AddSplit("左右に分割 (Ctrl+\\)", Orientation.Horizontal);
+        AddSplit("上下に分割 (Ctrl+Shift+\\)", Orientation.Vertical);
+        var splitContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        splitContent.Children.Add(SplitIcon(vertical: false));
+        splitContent.Children.Add(new TextBlock { Text = "分割", FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+        var splitButton = new DropDownButton { Content = splitContent, Flyout = splitMenu,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0),
+            Padding = new Thickness(8, 4, 8, 4), MinHeight = 32 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(splitButton, "区画を分割");
+        buttons.Children.Add(splitButton);
         buttons.Children.Add(SmallButton(new FontIcon { Glyph = "", FontSize = 14 }, "この区画を閉じる", () => _actions.ClosePane(pane)));
         SetColumn(buttons, 1);
         header.Children.Add(buttons);
@@ -166,8 +181,7 @@ public sealed class PaneHost : Grid
         var buttons = ((Grid)((Grid)frame.Child).Children[0]).Children.OfType<StackPanel>().First();
         bool canSplit = _tab.CanSplit;
         buttons.Children[0].Visibility = canSplit ? Visibility.Visible : Visibility.Collapsed;
-        buttons.Children[1].Visibility = canSplit ? Visibility.Visible : Visibility.Collapsed;
-        buttons.Children[2].Visibility = _tab.PaneCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+        buttons.Children[1].Visibility = _tab.PaneCount > 1 ? Visibility.Visible : Visibility.Collapsed;
         if (frame.Tag is PaneViewModel pane && _cache.TryGetValue(pane.Id, out var c) && c.View is FolderPaneView folder)
             folder.SetNavigationVisible(_tab.PaneCount > 1);
     }

@@ -72,6 +72,15 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
     TabEntry? CurrentTab => Tabs.SelectedItem is TabViewItem item ? _tabs.FirstOrDefault(t => t.Item == item) : null;
     FolderPaneViewModel? ActiveFolder => CurrentTab?.Model.ActiveFolder;
 
+    // ウィンドウが狭いときも、場所と検索欄の幅を確保する。
+    void Root_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        bool compact = e.NewSize.Width < 1150;
+        BrandPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        TopBar.ColumnDefinitions[0].Width = new GridLength(compact ? 0 : 228);
+        WorkspaceGrid.ColumnDefinitions[0].Width = new GridLength(compact ? 212 : 248);
+    }
+
     // ================================================================ タブ
 
     TabEntry AddTab(TabViewModel model, bool select = true, int? index = null)
@@ -80,13 +89,14 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         var item = new TabViewItem
         {
             Content = host,
-            IconSource = new FontIconSource { Glyph = "\uE8B7" },
+            IconSource = TabIcon(model.ActivePane),
         };
         item.SetBinding(TabViewItem.HeaderProperty, new Microsoft.UI.Xaml.Data.Binding { Source = model, Path = new PropertyPath(nameof(TabViewModel.Title)) });
         var entry = new TabEntry(model, item, host);
         _tabs.Add(entry);
         model.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName is nameof(TabViewModel.ActivePane) or nameof(TabViewModel.Title)) item.IconSource = TabIcon(model.ActivePane);
             if (e.PropertyName == nameof(TabViewModel.ActivePane) && ReferenceEquals(CurrentTab, entry)) OnActivePaneChanged();
         };
         if (index is int i && i <= Tabs.TabItems.Count) Tabs.TabItems.Insert(i, item);
@@ -94,6 +104,22 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         if (select) Tabs.SelectedItem = item;
         return entry;
     }
+
+    static FontIconSource TabIcon(PaneViewModel pane) => new()
+    {
+        Glyph = pane switch
+        {
+            FolderPaneViewModel { IsPc: true } => "\uE7F8",
+            SearchPaneViewModel => "\uE721",
+            InboxPaneViewModel => "\uE896",
+            CapacityPaneViewModel => "\uEDA2",
+            AdminPaneViewModel => "\uE7EF",
+            PreviewPaneViewModel => "\uE8A1",
+            ShellPaneViewModel { IsRecycleBin: true } => "\uE74D",
+            ShellPaneViewModel => "\uE968",
+            _ => "\uE8B7",
+        },
+    };
 
     public void OpenInNewTab(string path) => AddTab(new TabViewModel(new FolderPaneViewModel(path)));
 
@@ -176,6 +202,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         var q = QueryParser.Parse(SearchBox.Text);
         string? scope = q.InPath == null ? null : Path.GetFileName(q.InPath.TrimEnd('\\')) is { Length: > 0 } n ? n : q.InPath;
         SearchBox.PlaceholderText = scope != null ? $"「{scope}」の中を検索（Ctrl+F）" : "PC 全体を検索（Ctrl+F）";
+        UpdateSidebarSelection();
     }
 
     void TopBack_Click(object sender, RoutedEventArgs e) => _ = AddressSource?.GoBackAsync();
@@ -433,7 +460,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         var q = QueryParser.Parse(SearchBox.Text);
         FolderChip.IsChecked = q.Kind == KindFilter.Folders;
         FileChip.IsChecked = q.Kind == KindFilter.Files;
-        ModeChip.Content = "一致: " + q.DefaultMode switch
+        ModeChip.Content = "一致: " + (q.DefaultMode switch
         {
             MatchMode.Prefix => "前方一致",
             MatchMode.Exact => "完全一致",
@@ -441,11 +468,20 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             MatchMode.Regex => "正規表現",
             MatchMode.Fuzzy => "あいまい",
             _ => "部分一致",
-        };
+        });
         ExtChip.Content = q.Extensions.Count == 0 ? "拡張子" : "拡張子: " + string.Join(",", q.Extensions.Take(3)) + (q.Extensions.Count > 3 ? "…" : "");
         DateChip.Content = q.ModifiedFrom == null && q.ModifiedTo == null ? "期間" : $"期間: {q.ModifiedFrom:yyyy/MM/dd}〜{q.ModifiedTo?.AddDays(-1):yyyy/MM/dd}";
         SyncInFolderChip(q);
         _syncingChips = false;
+    }
+
+    void ResetSearchFilters_Click(object sender, RoutedEventArgs e)
+    {
+        string query = QueryEditor.SetKind(SearchBox.Text, KindFilter.All);
+        query = QueryEditor.SetMode(query, MatchMode.Substring);
+        query = QueryEditor.SetValue(query, "ext", "");
+        query = QueryEditor.SetValue(query, "modified", "");
+        SetQuery(QueryEditor.SetInPath(query, null));
     }
 
     void SyncInFolderChip(SearchQuery? q = null)
@@ -456,6 +492,9 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         string? scopeName = q.InPath == null ? null : Path.GetFileName(q.InPath.TrimEnd('\\')) is { Length: > 0 } n ? n : q.InPath;
         InFolderChip.Content = scopeName != null ? $"範囲: {scopeName}" : "このフォルダ内";
         InFolderChip.IsEnabled = q.InPath != null || folder != null;
+        int count = (q.Kind != KindFilter.All ? 1 : 0) + (q.DefaultMode != MatchMode.Substring ? 1 : 0)
+            + (q.Extensions.Count > 0 ? 1 : 0) + (q.ModifiedFrom != null || q.ModifiedTo != null ? 1 : 0) + (q.InPath != null ? 1 : 0);
+        FilterSummary.Text = count == 0 ? "検索条件" : $"検索条件 ({count})";
     }
 
     void FolderChip_Click(object sender, RoutedEventArgs e)
@@ -525,8 +564,10 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         int n = InboxService.Instance.Items.Count;
         InboxList.ItemsSource = new List<SidebarItem>
         {
+            new() { Name = "PC", Glyph = "\uE7F8", Kind = SidebarKind.Folder, Color = "#3E63DD" },
             new() { Name = n > 0 ? $"受け取りボックス（{n}）" : "受け取りボックス", Glyph = "", Kind = SidebarKind.Inbox },
         };
+        UpdateSidebarSelection();
     }
 
     /// <summary>受け取りボックスを開く。表示中のタブにあればそこを、なければ新しいタブで。</summary>
@@ -551,8 +592,6 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             .Select((q, i) => (q.Name, q.Glyph, Path: ShellService.KnownFolder(q.Id), Color: QuickColors[i % QuickColors.Length]))
             .Where(q => q.Path != null)
             .Select(q => new SidebarItem { Name = q.Name, Glyph = q.Glyph, Path = q.Path!, Kind = SidebarKind.Folder, Color = q.Color })
-            // ネットワーク・ごみ箱も FileBox の中で開く（エクスプローラーを出さない）
-            .Concat(ShellPlaces())
             .ToList();
         FavoriteList.ItemsSource = _store.GetFavorites()
             .Select(f => new SidebarItem
@@ -578,7 +617,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
                 Detail = $"空き {Format.HumanSize(d.TotalFreeSpace)} / {Format.HumanSize(d.TotalSize)}",
                 Color = "#5B8DEF",
             };
-        }).ToList();
+        }).Concat(ShellPlaces()).ToList();
         WorkspaceList.ItemsSource = _store.GetWorkspaces()
             .Select(w => new SidebarItem { Name = w.Name, Glyph = "\uE8A9", Id = w.Id, Kind = SidebarKind.Workspace, Color = "#8E4EC6" })
             .ToList();

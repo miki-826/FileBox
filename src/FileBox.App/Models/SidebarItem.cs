@@ -22,6 +22,9 @@ public sealed class SidebarItem
 
     public string Tooltip => Kind switch
     {
+        SidebarKind.Drive => $"{Path}\n{Detail}",
+        SidebarKind.Zone => $"{Path}\n{Detail}",
+        SidebarKind.Folder when Path.Length == 0 => "PC のドライブを表示",
         SidebarKind.SavedSearch => Query ?? Name,
         SidebarKind.Workspace => $"ワークスペース「{Name}」を開く",
         SidebarKind.Inbox => "ダウンロード・デスクトップに届いたファイルの置き場所を提案",

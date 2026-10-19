@@ -20,6 +20,31 @@ public sealed partial class MainWindow
     readonly Dictionary<string, (Button Toggle, FrameworkElement Body)> _sections = new();
     HashSet<string> _collapsed = new();
 
+    /// <summary>表示中の場所を一つだけ強調する。お気に入りと履歴の重複では上側を優先する。</summary>
+    void UpdateSidebarSelection()
+    {
+        var active = CurrentTab?.Model.ActivePane;
+        bool found = false;
+        foreach (var list in new[] { InboxList, QuickList, FavoriteList, RecentList, DriveList, SavedSearchList })
+        {
+            SidebarItem? selected = null;
+            if (!found)
+            {
+                selected = list.Items.OfType<SidebarItem>().FirstOrDefault(item => active switch
+                {
+                    InboxPaneViewModel => item.Kind == SidebarKind.Inbox,
+                    ShellPaneViewModel shell => item.Kind == SidebarKind.Shell && item.Path == shell.Location,
+                    SearchPaneViewModel search => item.Kind == SidebarKind.SavedSearch && item.Query == search.Query,
+                    FolderPaneViewModel folder => item.Kind is SidebarKind.Folder or SidebarKind.Favorite or SidebarKind.Recent or SidebarKind.Drive
+                        && string.Equals(item.Path.TrimEnd('\\'), folder.CurrentPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase),
+                    _ => false,
+                });
+            }
+            list.SelectedItem = selected;
+            found |= selected != null;
+        }
+    }
+
     // ================================================================ 折りたたみ
 
     void InitializeSections()
@@ -28,7 +53,7 @@ public sealed partial class MainWindow
         RegisterSection("quick", "クイック アクセス", QuickToggle, QuickList);
         RegisterSection("recent", "最近使ったフォルダ", RecentToggle, RecentList);
         RegisterSection("favorites", "お気に入り", FavoriteToggle, FavoriteList);
-        RegisterSection("drives", "PC", DriveToggle, DriveList);
+        RegisterSection("drives", "ドライブと場所", DriveToggle, DriveList);
         RegisterSection("zones", "容量の上限", ZoneToggle, ZoneList);
         RegisterSection("workspaces", "ワークスペース", WorkspaceToggle, WorkspaceList);
         RegisterSection("searches", "保存した検索", SavedSearchToggle, SavedSearchList);
@@ -128,6 +153,7 @@ public sealed partial class MainWindow
             Kind = SidebarKind.Recent,
             Color = ViewPreferences.FolderColor(p) ?? "#E8A33D",
         }).ToList();
+        UpdateSidebarSelection();
     }
 
     void OnFolderColorsChanged()
