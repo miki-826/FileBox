@@ -151,6 +151,8 @@ public sealed class UserStore : IDisposable
              ON CONFLICT(path) DO UPDATE SET last_access=excluded.last_access, count=count+1
              """, null, ("$p", path), ("$t", DateTime.Now.ToString("o")));
 
+    public void RemoveRecent(string path) => Exec("DELETE FROM recent_items WHERE path=$p", null, ("$p", path));
+
     public List<string> GetRecent(int limit = 20) =>
         Query("SELECT path FROM recent_items ORDER BY last_access DESC LIMIT $n", r => r.GetString(0), ("$n", limit));
 

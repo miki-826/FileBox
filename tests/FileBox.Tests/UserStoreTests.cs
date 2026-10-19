@@ -32,6 +32,17 @@ public sealed class UserStoreTests : IDisposable
     }
 
     [Fact]
+    public void RecentItemsAreNewestFirstAndRemovable()
+    {
+        using var s = new UserStore(_path);
+        s.TouchRecent(@"D:\書類");
+        s.TouchRecent(@"D:\仕事");
+        Assert.Equal(new[] { @"D:\仕事", @"D:\書類" }, s.GetRecent());
+        s.RemoveRecent(@"D:\仕事");
+        Assert.Equal(new[] { @"D:\書類" }, s.GetRecent());
+    }
+
+    [Fact]
     public void StoresSaveHistoryAndInbox()
     {
         using var s = new UserStore(_path);

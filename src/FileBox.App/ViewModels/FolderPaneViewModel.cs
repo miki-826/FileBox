@@ -49,6 +49,9 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
 
     public event Action? ItemsReloaded;
 
+    /// <summary>どこかの区画でフォルダを開いた（「最近使ったフォルダ」用）。</summary>
+    public static event Action<string>? Visited;
+
     public FolderPaneViewModel(string path, string? id = null)
     {
         if (id != null) Id = id;
@@ -113,6 +116,7 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
         OnPropertyChanged(nameof(CanGoForward));
         OnPropertyChanged(nameof(CanGoUp));
         Watch();
+        if (!IsPc) Visited?.Invoke(path);
         await LoadAsync();
     }
 

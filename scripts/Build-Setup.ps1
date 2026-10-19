@@ -6,7 +6,8 @@ if (-not (Test-Path -LiteralPath $compiler)) { throw '.NET Framework の C# コ�
 $dist = Join-Path $repoRoot 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $output = Join-Path $dist 'FileBox-Setup.exe'
-& $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$output" `
+$icon = Join-Path $repoRoot 'src/FileBox.App/Assets/FileBox.ico'
+& $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$output" "/win32icon:$icon" `
     /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Net.Http.dll `
     /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll `
     (Join-Path $repoRoot 'src/FileBox.Setup/Program.cs') (Join-Path $repoRoot 'src/FileBox.Setup/Package.cs')

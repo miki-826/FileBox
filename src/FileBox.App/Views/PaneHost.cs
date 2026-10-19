@@ -114,12 +114,13 @@ public sealed class PaneHost : Grid
             InboxPaneViewModel i => new InboxPaneView(i, _actions),
             CapacityPaneViewModel c => new CapacityPaneView(c, _actions),
             AdminPaneViewModel a => new AdminPaneView(a),
+            ShellPaneViewModel sh => new ShellPaneView(sh, _actions),
             _ => new TextBlock { Text = "?" },
         };
 
         var title = new TextBlock
         {
-            FontSize = 12,
+            FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
@@ -131,9 +132,9 @@ public sealed class PaneHost : Grid
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(title);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 0, Tag = "buttons" };
-        buttons.Children.Add(SmallButton("", "左右に分割 (Ctrl+\\)", () => _actions.SplitPane(pane, Orientation.Horizontal)));
-        buttons.Children.Add(SmallButton("", "上下に分割 (Ctrl+Shift+\\)", () => _actions.SplitPane(pane, Orientation.Vertical)));
-        buttons.Children.Add(SmallButton("", "この区画を閉じる", () => _actions.ClosePane(pane)));
+        buttons.Children.Add(SmallButton(SplitIcon(vertical: false), "左右に分割 (Ctrl+\\)", () => _actions.SplitPane(pane, Orientation.Horizontal)));
+        buttons.Children.Add(SmallButton(SplitIcon(vertical: true), "上下に分割 (Ctrl+Shift+\\)", () => _actions.SplitPane(pane, Orientation.Vertical)));
+        buttons.Children.Add(SmallButton(new FontIcon { Glyph = "", FontSize = 14 }, "この区画を閉じる", () => _actions.ClosePane(pane)));
         SetColumn(buttons, 1);
         header.Children.Add(buttons);
 
@@ -167,18 +168,37 @@ public sealed class PaneHost : Grid
         buttons.Children[0].Visibility = canSplit ? Visibility.Visible : Visibility.Collapsed;
         buttons.Children[1].Visibility = canSplit ? Visibility.Visible : Visibility.Collapsed;
         buttons.Children[2].Visibility = _tab.PaneCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+        if (frame.Tag is PaneViewModel pane && _cache.TryGetValue(pane.Id, out var c) && c.View is FolderPaneView folder)
+            folder.SetNavigationVisible(_tab.PaneCount > 1);
     }
 
-    static Button SmallButton(string glyph, string tip, Action action)
+    /// <summary>分割の向きが一目で分かるアイコン（枠の中に縦または横の仕切り線）。</summary>
+    static UIElement SplitIcon(bool vertical)
+    {
+        var stroke = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+        var grid = new Grid { Width = 18, Height = 16 };
+        grid.Children.Add(new Border { BorderBrush = stroke, BorderThickness = new Thickness(1.5), CornerRadius = new CornerRadius(3) });
+        grid.Children.Add(new Border
+        {
+            Background = stroke,
+            Width = vertical ? double.NaN : 1.5,
+            Height = vertical ? 1.5 : double.NaN,
+            HorizontalAlignment = vertical ? HorizontalAlignment.Stretch : HorizontalAlignment.Center,
+            VerticalAlignment = vertical ? VerticalAlignment.Center : VerticalAlignment.Stretch,
+        });
+        return grid;
+    }
+
+    static Button SmallButton(UIElement content, string tip, Action action)
     {
         var b = new Button
         {
-            Content = new FontIcon { Glyph = glyph, FontSize = 12 },
+            Content = content,
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
-            Padding = new Thickness(6, 4, 6, 4),
-            MinWidth = 32,
-            MinHeight = 32,
+            Padding = new Thickness(8, 6, 8, 6),
+            MinWidth = 40,
+            MinHeight = 36,
             CornerRadius = new CornerRadius(6),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, tip);

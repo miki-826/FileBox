@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using FileBox.App.Models;
 using FileBox.App.Services;
 using FileBox.App.ViewModels;
@@ -6,6 +7,7 @@ using FileBox.Core.Files;
 using FileBox.Core.Security;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
 using Windows.UI.Core;
@@ -32,12 +34,52 @@ public sealed partial class FolderPaneView : UserControl
             if (List.SelectedItem != null) List.ScrollIntoView(List.SelectedItem, ScrollIntoViewAlignment.Leading);
         };
         UpdateChrome();
+        ApplyItems();
     }
 
     void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(FolderPaneViewModel.CurrentPath) or nameof(FolderPaneViewModel.Sort) or nameof(FolderPaneViewModel.SortDescending))
             UpdateChrome();
+        if (e.PropertyName == nameof(FolderPaneViewModel.Items)) ApplyItems();
+    }
+
+    /// <summary>
+    /// 一覧に項目を渡す。「日付でまとめる」場所（ダウンロードは既定）は、今日・昨日・今週・先週・今月…の見出しを付ける。
+    /// まとまりの中の順番は今の並べ替えのまま。
+    /// </summary>
+    void ApplyItems()
+    {
+        bool grouped = !ViewModel.IsPc && ViewPreferences.GroupByDate(ViewModel.CurrentPath);
+        GroupButton.IsChecked = grouped;
+        GroupButton.IsEnabled = !ViewModel.IsPc;
+        if (!grouped)
+        {
+            List.ItemsSource = ViewModel.Items;
+            return;
+        }
+        var now = DateTime.Now;
+        var firstDay = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var groups = ViewModel.Items
+            .GroupBy(i => DateGroup.Classify(i.Modified, now, firstDay))
+            .OrderBy(g => g.Key)
+            .Select(g => new ItemGroup($"{DateGroup.Label(g.Key)}（{g.Count()}）", g))
+            .ToList();
+        List.ItemsSource = new CollectionViewSource { IsSourceGrouped = true, Source = groups }.View;
+    }
+
+    void Group_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.IsPc) return;
+        ViewPreferences.SetGroupByDate(ViewModel.CurrentPath, GroupButton.IsChecked == true);
+        ApplyItems();
+    }
+
+    /// <summary>タブに区画が1つのときは、上の共通バー（戻る・アドレス）を使うので区画内のナビゲーションを隠す。</summary>
+    public void SetNavigationVisible(bool visible)
+    {
+        var v = visible ? Visibility.Visible : Visibility.Collapsed;
+        BackButton.Visibility = ForwardButton.Visibility = UpButton.Visibility = RefreshButton.Visibility = AddressArea.Visibility = v;
     }
 
     void UpdateChrome()
@@ -258,10 +300,8 @@ public sealed partial class FolderPaneView : UserControl
                 Add("隣の区画で開く", "", () => _actions.OpenInAdjacentPane(ViewModel, item.FullPath));
                 Add("お気に入りに追加", "", () => _actions.AddFavorite(item.FullPath));
             }
-            else
-            {
-                Add("プレビュー", "", () => _actions.TogglePreview(ViewModel), "Space");
-            }
+            Add("プレビュー・詳細", "", () => _actions.TogglePreview(ViewModel), "Space");
+            if (item.IsDirectory && !item.IsDrive) menu.Items.Add(FolderColorMenu(selected.Where(s => s.IsDirectory).Select(s => s.FullPath).ToList()));
             menu.Items.Add(new MenuFlyoutSeparator());
             if (!item.IsDrive)
             {
@@ -274,7 +314,9 @@ public sealed partial class FolderPaneView : UserControl
                 Add("最適な場所へ移動…", "", () => _ = SmartMoveAsync(selected));
                 Add("名前の変更", "", () => _ = RenameAsync(item), "F2");
                 Add("削除（ごみ箱へ）", "", () => DeleteSelected(), "Delete");
-                Add("ZIP に圧縮", "\uF012", () => _ = CompressAsync(selected));
+                // 圧縮ファイルだけを選んでいるときは出さない（ZIP をさらに ZIP にしても意味がない）
+                if (selected.Any(s => s.IsDirectory || !FileKinds.IsArchive(s.Extension)))
+                    Add("ZIP に圧縮", "\uF012", () => _ = CompressAsync(selected));
                 if (!item.IsDirectory && item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                     Add("すべて展開", "\uE8B7", () => _ = ExtractAsync(item));
             }
@@ -298,6 +340,28 @@ public sealed partial class FolderPaneView : UserControl
             Add("プロパティ", "", () => ShellService.ShowProperties(ViewModel.CurrentPath));
         }
         return menu;
+    }
+
+    /// <summary>フォルダの色（Teams のように自分で選べる。FileBox の中だけの表示で、Windows 側は変えない）。</summary>
+    static MenuFlyoutSubItem FolderColorMenu(IReadOnlyList<string> folders)
+    {
+        var sub = new MenuFlyoutSubItem { Text = "フォルダの色", Icon = new FontIcon { Glyph = "\uE790" } };
+        string? current = folders.Count > 0 ? ViewPreferences.FolderColor(folders[0]) : null;
+        void Add(string text, string? hex)
+        {
+            var mi = new ToggleMenuFlyoutItem
+            {
+                Text = text,
+                IsChecked = string.Equals(current, hex, StringComparison.OrdinalIgnoreCase),
+                Icon = new FontIcon { Glyph = "\uE8B7", Foreground = hex == null ? Converters.IconBrush(true, false) : Converters.HexBrush(hex) },
+            };
+            mi.Click += (_, _) => { foreach (var f in folders) ViewPreferences.SetFolderColor(f, hex); };
+            sub.Items.Add(mi);
+        }
+        Add("既定（黄）", null);
+        sub.Items.Add(new MenuFlyoutSeparator());
+        foreach (var (name, hex) in ViewPreferences.Palette) Add(name, hex);
+        return sub;
     }
 
     async Task CompressAsync(IReadOnlyList<FileItem> items)

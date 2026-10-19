@@ -4,6 +4,8 @@ using System.Drawing;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -44,6 +46,7 @@ namespace FileBox.Setup
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
+            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) { }
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 22, 28, 22), ColumnCount = 1, RowCount = 7 };
             foreach (int height in new[] { 44, 48, 44, 24, 48, 24, 44 }) layout.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             layout.Controls.Add(new Label { Text = "FileBox を準備します", Font = new Font(Font.FontFamily, 20, FontStyle.Bold), Dock = DockStyle.Fill });
@@ -75,6 +78,34 @@ namespace FileBox.Setup
             {
                 if (busy) { e.Cancel = true; cancellation.Cancel(); }
             };
+        }
+
+        static void CreateShortcuts(string target, string workingDirectory)
+        {
+            string programs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "FileBox.lnk");
+            string desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "FileBox.lnk");
+            foreach (string link in new[] { desktop, programs })
+            {
+                // WScript.Shell は Windows 標準の COM。参照を増やさないようリフレクションで呼ぶ
+                Type type = Type.GetTypeFromProgID("WScript.Shell", true);
+                object shell = Activator.CreateInstance(type);
+                object shortcut = null;
+                try
+                {
+                    shortcut = type.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { link });
+                    Type t = shortcut.GetType();
+                    t.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, new object[] { target });
+                    t.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { workingDirectory });
+                    t.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { "FileBox（開発プレビュー）" });
+                    t.InvokeMember("IconLocation", BindingFlags.SetProperty, null, shortcut, new object[] { target + ",0" });
+                    t.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+                }
+                finally
+                {
+                    if (shortcut != null) Marshal.FinalReleaseComObject(shortcut);
+                    Marshal.FinalReleaseComObject(shell);
+                }
+            }
         }
 
         async Task DownloadAsync()
@@ -134,8 +165,14 @@ namespace FileBox.Setup
                 token.ThrowIfCancellationRequested();
                 File.Delete(zip);
                 installedPath = app;
-                status.Text = "準備ができました。FileBox を起動できます。";
-                detail.Text = "保存先: " + installedPath;
+                // デスクトップとスタートメニューから起動できるようにする（再実行時は最新の展開先へ向け直す）
+                string shortcutError = null;
+                try { CreateShortcuts(Path.Combine(app, "FileBox.exe"), app); }
+                catch (Exception ex) { shortcutError = ex.Message; }
+                status.Text = shortcutError == null
+                    ? "準備ができました。デスクトップに「FileBox」のショートカットを作成しました。"
+                    : "準備ができました。FileBox を起動できます。";
+                detail.Text = "保存先: " + installedPath + (shortcutError == null ? "" : Environment.NewLine + "ショートカットを作成できませんでした: " + shortcutError);
                 bar.Value = 100;
                 primary.Text = "FileBox を起動";
                 folder.Visible = true;

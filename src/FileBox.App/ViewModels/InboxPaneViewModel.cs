@@ -15,11 +15,15 @@ public sealed partial class InboxPaneViewModel : PaneViewModel
     [ObservableProperty]
     string _summary = "";
 
+    /// <summary>項目が増えた・減った（日付ごとのまとまりを作り直す）。</summary>
+    public event Action? ItemsChanged;
+
     public InboxPaneViewModel(string? id = null)
     {
         if (id != null) Id = id;
         Title = "受け取りボックス";
         InboxService.Instance.CountChanged += UpdateSummary;
+        Items.CollectionChanged += OnItemsChanged;
         UpdateSummary();
     }
 
@@ -37,5 +41,11 @@ public sealed partial class InboxPaneViewModel : PaneViewModel
 
     public override JsonObject Serialize() => new() { ["pane"] = "inbox", ["id"] = Id };
 
-    public override void Dispose() => InboxService.Instance.CountChanged -= UpdateSummary;
+    void OnItemsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => ItemsChanged?.Invoke();
+
+    public override void Dispose()
+    {
+        InboxService.Instance.CountChanged -= UpdateSummary;
+        Items.CollectionChanged -= OnItemsChanged;
+    }
 }

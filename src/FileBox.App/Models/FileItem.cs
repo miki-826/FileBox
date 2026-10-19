@@ -37,6 +37,12 @@ public sealed class FileItem
     };
 }
 
+/// <summary>一覧のまとまり（日付でグループ化したときの「今日」「先週」など）。</summary>
+public sealed class ItemGroup(string header, IEnumerable<object> items) : List<object>(items)
+{
+    public string Header { get; } = header;
+}
+
 public static class FileKinds
 {
     static readonly HashSet<string> Images = new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".ico", ".tif", ".tiff", ".heic", ".jfif" };
@@ -57,6 +63,27 @@ public static class FileKinds
     public static bool IsAudio(string ext) => Audio.Contains(ext);
     public static bool IsWeb(string ext) => Web.Contains(ext);
     public static bool IsText(string ext) => Text.Contains(ext) || Code.Contains(ext);
+    public static bool IsArchive(string ext) => Archives.Contains(ext);
+
+    static readonly HashSet<string> Word = new(StringComparer.OrdinalIgnoreCase) { ".doc", ".docx", ".docm", ".rtf", ".odt" };
+    static readonly HashSet<string> Excel = new(StringComparer.OrdinalIgnoreCase) { ".xls", ".xlsx", ".xlsm", ".xlsb", ".csv", ".tsv", ".ods" };
+    static readonly HashSet<string> PowerPoint = new(StringComparer.OrdinalIgnoreCase) { ".ppt", ".pptx", ".pptm", ".odp" };
+
+    /// <summary>種類ごとのアイコンの色（#RRGGBB）。見分けやすさのため Office などは各アプリの色に寄せる。null は既定の文字色。</summary>
+    public static string? Color(string ext) =>
+        ext == ".pdf" ? "#D93025" :
+        Word.Contains(ext) ? "#2B579A" :
+        Excel.Contains(ext) ? "#217346" :
+        PowerPoint.Contains(ext) ? "#C43E1C" :
+        Images.Contains(ext) ? "#0F9D8C" :
+        Videos.Contains(ext) ? "#C2185B" :
+        Audio.Contains(ext) ? "#8E4EC6" :
+        Archives.Contains(ext) ? "#B7791F" :
+        Web.Contains(ext) ? "#E44D26" :
+        Code.Contains(ext) ? "#3E63DD" :
+        Executables.Contains(ext) ? "#5B6B7F" :
+        Text.Contains(ext) ? "#6E7781" :
+        null;
 
     public static string Glyph(string ext) =>
         Images.Contains(ext) ? "" :

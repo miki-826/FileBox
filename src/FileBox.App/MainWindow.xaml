@@ -10,10 +10,10 @@
     <Grid x:Name="Root" RowDefinitions="Auto,*,Auto" Background="{ThemeResource LayerFillColorAltBrush}">
         <Grid.Resources>
             <DataTemplate x:Key="SidebarTemplate" x:DataType="models:SidebarItem">
-                <Grid ColumnDefinitions="28,*" Padding="0,4" ToolTipService.ToolTip="{x:Bind Tooltip}">
-                    <FontIcon Glyph="{x:Bind Glyph}" FontSize="14" HorizontalAlignment="Left" />
+                <Grid ColumnDefinitions="34,*" Padding="0,4" ToolTipService.ToolTip="{x:Bind Tooltip}">
+                    <FontIcon Glyph="{x:Bind Glyph}" FontSize="18" HorizontalAlignment="Left" Foreground="{x:Bind views:Converters.HexBrush(Color)}" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" FontSize="13" />
+                        <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" FontSize="14" />
                         <ProgressBar Visibility="{x:Bind views:Converters.Visible(HasUsage)}" Value="{x:Bind views:Converters.Percent(Usage)}"
                                      Foreground="{x:Bind views:Converters.UsageBrush(Usage)}" Margin="0,3,8,0" />
                         <TextBlock Visibility="{x:Bind views:Converters.VisibleIf(Detail)}" Text="{x:Bind Detail}" FontSize="11"
@@ -29,7 +29,7 @@
                 <Setter Property="ItemContainerStyle">
                     <Setter.Value>
                         <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
-                            <Setter Property="MinHeight" Value="38" />
+                            <Setter Property="MinHeight" Value="40" />
                             <Setter Property="Padding" Value="10,2" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="CornerRadius" Value="6" />
@@ -42,7 +42,37 @@
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Setter Property="Margin" Value="16,20,0,6" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Margin" Value="16,0,0,0" />
+            </Style>
+            <!-- 見出しの右のボタン（＋・保存・折りたたみ） -->
+            <Style x:Key="SidebarHeaderButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="6,4" />
+                <Setter Property="MinWidth" Value="34" />
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+            <Style x:Key="SidebarSection" TargetType="Grid">
+                <Setter Property="Margin" Value="0,16,8,4" />
+            </Style>
+            <Style x:Key="SidebarFooterButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="Padding" Value="10,8" />
+                <Setter Property="MinHeight" Value="42" />
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+            <Style x:Key="TopNavButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="MinWidth" Value="40" />
+                <Setter Property="MinHeight" Value="40" />
+                <Setter Property="CornerRadius" Value="6" />
             </Style>
             <Style x:Key="Chip" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
                 <Setter Property="CornerRadius" Value="14" />
@@ -58,132 +88,199 @@
             </Style>
         </Grid.Resources>
 
-        <!-- 統合検索バー + チップ（04_画面設計 S02） -->
-        <Grid Grid.Row="0" Padding="20,14,20,12" ColumnDefinitions="208,*" ColumnSpacing="12"
+        <!-- 上のバー: 戻る・進む・上へ ＋ アドレスバー（エクスプローラーと同じ並び）＋ 検索 ＋ 絞り込み（04_画面設計 S02） -->
+        <Grid Grid.Row="0" Padding="16,10,16,10" ColumnDefinitions="208,Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="8"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Top" Margin="0,4,0,0">
-                <Border Width="36" Height="36" CornerRadius="10" Background="{ThemeResource AccentFillColorDefaultBrush}">
-                    <FontIcon Glyph="&#xE8B7;" FontSize="19" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                </Border>
-                <StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Image Source="ms-appx:///Assets/FileBox.png" Width="36" Height="36" AutomationProperties.Name="FileBox" />
+                <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="FileBox" FontSize="20" FontWeight="SemiBold" />
                     <TextBlock Text="開発プレビュー" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </StackPanel>
-            <StackPanel Grid.Column="1" Spacing="10">
-            <AutoSuggestBox x:Name="SearchBox" MinHeight="40" CornerRadius="8"
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button x:Name="TopBackButton" Style="{StaticResource TopNavButton}" Click="TopBack_Click" AutomationProperties.Name="戻る (Alt+←)" ToolTipService.ToolTip="戻る (Alt+←)">
+                    <FontIcon Glyph="&#xE72B;" FontSize="16" />
+                </Button>
+                <Button x:Name="TopForwardButton" Style="{StaticResource TopNavButton}" Click="TopForward_Click" AutomationProperties.Name="進む (Alt+→)" ToolTipService.ToolTip="進む (Alt+→)">
+                    <FontIcon Glyph="&#xE72A;" FontSize="16" />
+                </Button>
+                <Button x:Name="TopUpButton" Style="{StaticResource TopNavButton}" Click="TopUp_Click" AutomationProperties.Name="上へ (Alt+↑)" ToolTipService.ToolTip="上へ (Alt+↑)">
+                    <FontIcon Glyph="&#xE74A;" FontSize="16" />
+                </Button>
+                <Button Style="{StaticResource TopNavButton}" Click="TopRefresh_Click" AutomationProperties.Name="最新の情報に更新 (F5)" ToolTipService.ToolTip="最新の情報に更新 (F5)">
+                    <FontIcon Glyph="&#xE72C;" FontSize="16" />
+                </Button>
+            </StackPanel>
+
+            <!-- アドレスバー: 選択中の区画のフォルダ。余白をクリックするとパスを直接入力できる -->
+            <Grid Grid.Column="2" VerticalAlignment="Center">
+                <Border x:Name="TopBreadcrumbHost" CornerRadius="8" Padding="10,0" MinHeight="40"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                        Tapped="TopBreadcrumbHost_Tapped" ToolTipService.ToolTip="クリックしてパスを入力（Ctrl+L）">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <FontIcon x:Name="TopAddressIcon" Glyph="&#xE8B7;" FontSize="16" VerticalAlignment="Center" />
+                        <BreadcrumbBar x:Name="TopBreadcrumb" Grid.Column="1" VerticalAlignment="Center" ItemClicked="TopBreadcrumb_ItemClicked" />
+                    </Grid>
+                </Border>
+                <TextBox x:Name="TopAddressBox" Visibility="Collapsed" MinHeight="40" VerticalContentAlignment="Center" CornerRadius="8"
+                         AutomationProperties.Name="フォルダのパス" PlaceholderText="パス・%USERPROFILE%・shell:Downloads を入力して Enter"
+                         KeyDown="TopAddressBox_KeyDown" LostFocus="TopAddressBox_LostFocus" />
+            </Grid>
+
+            <!-- 検索: アドレスバーの右（エクスプローラーと同じ位置）。何を検索するかを入力欄の中に表示する -->
+            <AutoSuggestBox x:Name="SearchBox" Grid.Column="3" Width="400" MinHeight="40" CornerRadius="8" VerticalAlignment="Center"
                             AutomationProperties.Name="ファイルとフォルダを検索"
-                            PlaceholderText="ファイルやフォルダを検索（Ctrl+F）  例: 請求書 ext:pdf"
+                            PlaceholderText="PC 全体を検索（Ctrl+F）"
                             QueryIcon="Find"
                             TextChanged="SearchBox_TextChanged"
                             QuerySubmitted="SearchBox_QuerySubmitted"
                             SuggestionChosen="SearchBox_SuggestionChosen"
                             GotFocus="SearchBox_GotFocus" />
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
-                          HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
-            <StackPanel Orientation="Horizontal" Spacing="6" Padding="0,0,0,4">
-                <ToggleButton x:Name="FolderChip" Style="{StaticResource Chip}" Content="フォルダのみ" Click="FolderChip_Click" />
-                <ToggleButton x:Name="FileChip" Style="{StaticResource Chip}" Content="ファイルのみ" Click="FileChip_Click" />
-                <DropDownButton x:Name="ModeChip" Style="{StaticResource ChipDrop}" Content="一致: 部分一致">
-                    <DropDownButton.Flyout>
-                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                            <MenuFlyoutItem Text="部分一致（既定）" Tag="substring" Click="Mode_Click" />
-                            <MenuFlyoutItem Text="前方一致（先頭の文字）" Tag="prefix" Click="Mode_Click" />
-                            <MenuFlyoutItem Text="完全一致" Tag="exact" Click="Mode_Click" />
-                            <MenuFlyoutItem Text="ワイルドカード（* ?）" Tag="wildcard" Click="Mode_Click" />
-                            <MenuFlyoutItem Text="正規表現" Tag="regex" Click="Mode_Click" />
-                            <MenuFlyoutItem Text="あいまい（ローマ字・かな）" Tag="fuzzy" Click="Mode_Click" />
-                        </MenuFlyout>
-                    </DropDownButton.Flyout>
-                </DropDownButton>
-                <DropDownButton x:Name="ExtChip" Style="{StaticResource ChipDrop}" Content="拡張子">
-                    <DropDownButton.Flyout>
-                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                            <MenuFlyoutItem Text="指定なし" Tag="" Click="Ext_Click" />
-                            <MenuFlyoutItem Text="PDF" Tag="pdf" Click="Ext_Click" />
-                            <MenuFlyoutItem Text="Office（Word/Excel/PowerPoint）" Tag="doc,docx,xls,xlsx,xlsm,ppt,pptx" Click="Ext_Click" />
-                            <MenuFlyoutItem Text="画像" Tag="jpg,jpeg,png,gif,bmp,webp,heic" Click="Ext_Click" />
-                            <MenuFlyoutItem Text="動画" Tag="mp4,mov,wmv,avi,mkv" Click="Ext_Click" />
-                            <MenuFlyoutItem Text="音楽" Tag="mp3,wav,m4a,flac" Click="Ext_Click" />
-                            <MenuFlyoutItem Text="テキスト・CSV" Tag="txt,md,csv,log" Click="Ext_Click" />
-                            <MenuFlyoutItem Text="圧縮ファイル" Tag="zip,7z,rar" Click="Ext_Click" />
-                            <MenuFlyoutItem Text="実行ファイル" Tag="exe,msi" Click="Ext_Click" />
-                        </MenuFlyout>
-                    </DropDownButton.Flyout>
-                </DropDownButton>
-                <DropDownButton x:Name="DateChip" Style="{StaticResource ChipDrop}" Content="期間">
-                    <DropDownButton.Flyout>
-                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                            <MenuFlyoutItem Text="指定なし" Tag="" Click="Date_Click" />
-                            <MenuFlyoutItem Text="今日" Tag="today" Click="Date_Click" />
-                            <MenuFlyoutItem Text="昨日" Tag="yesterday" Click="Date_Click" />
-                            <MenuFlyoutItem Text="今週" Tag="thisweek" Click="Date_Click" />
-                            <MenuFlyoutItem Text="今月" Tag="thismonth" Click="Date_Click" />
-                            <MenuFlyoutItem Text="先月" Tag="lastmonth" Click="Date_Click" />
-                            <MenuFlyoutItem Text="今年" Tag="thisyear" Click="Date_Click" />
-                        </MenuFlyout>
-                    </DropDownButton.Flyout>
-                </DropDownButton>
-                <ToggleButton x:Name="InFolderChip" Style="{StaticResource Chip}" Content="このフォルダ内" Click="InFolderChip_Click" />
-                <Button Content="検索を保存" FontSize="12" CornerRadius="14" Padding="12,5" Click="SaveSearch_Click" />
-                <HyperlinkButton Content="検索の書き方" FontSize="12" Click="SearchHelp_Click" />
-            </StackPanel>
-            </ScrollViewer>
-            </StackPanel>
+
+            <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE71C;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="検索の絞り込み" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+                <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                              HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+                <StackPanel Orientation="Horizontal" Spacing="6" Padding="0,0,0,4">
+                    <ToggleButton x:Name="FolderChip" Style="{StaticResource Chip}" Content="フォルダのみ" Click="FolderChip_Click" />
+                    <ToggleButton x:Name="FileChip" Style="{StaticResource Chip}" Content="ファイルのみ" Click="FileChip_Click" />
+                    <DropDownButton x:Name="ModeChip" Style="{StaticResource ChipDrop}" Content="一致: 部分一致">
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <MenuFlyoutItem Text="部分一致（既定）" Tag="substring" Click="Mode_Click" />
+                                <MenuFlyoutItem Text="前方一致（先頭の文字）" Tag="prefix" Click="Mode_Click" />
+                                <MenuFlyoutItem Text="完全一致" Tag="exact" Click="Mode_Click" />
+                                <MenuFlyoutItem Text="ワイルドカード（* ?）" Tag="wildcard" Click="Mode_Click" />
+                                <MenuFlyoutItem Text="正規表現" Tag="regex" Click="Mode_Click" />
+                                <MenuFlyoutItem Text="あいまい（ローマ字・かな）" Tag="fuzzy" Click="Mode_Click" />
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <DropDownButton x:Name="ExtChip" Style="{StaticResource ChipDrop}" Content="拡張子">
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <MenuFlyoutItem Text="指定なし" Tag="" Click="Ext_Click" />
+                                <MenuFlyoutItem Text="PDF" Tag="pdf" Click="Ext_Click" />
+                                <MenuFlyoutItem Text="Office（Word/Excel/PowerPoint）" Tag="doc,docx,xls,xlsx,xlsm,ppt,pptx" Click="Ext_Click" />
+                                <MenuFlyoutItem Text="画像" Tag="jpg,jpeg,png,gif,bmp,webp,heic" Click="Ext_Click" />
+                                <MenuFlyoutItem Text="動画" Tag="mp4,mov,wmv,avi,mkv" Click="Ext_Click" />
+                                <MenuFlyoutItem Text="音楽" Tag="mp3,wav,m4a,flac" Click="Ext_Click" />
+                                <MenuFlyoutItem Text="テキスト・CSV" Tag="txt,md,csv,log" Click="Ext_Click" />
+                                <MenuFlyoutItem Text="圧縮ファイル" Tag="zip,7z,rar" Click="Ext_Click" />
+                                <MenuFlyoutItem Text="実行ファイル" Tag="exe,msi" Click="Ext_Click" />
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <DropDownButton x:Name="DateChip" Style="{StaticResource ChipDrop}" Content="期間">
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <MenuFlyoutItem Text="指定なし" Tag="" Click="Date_Click" />
+                                <MenuFlyoutItem Text="今日" Tag="today" Click="Date_Click" />
+                                <MenuFlyoutItem Text="昨日" Tag="yesterday" Click="Date_Click" />
+                                <MenuFlyoutItem Text="今週" Tag="thisweek" Click="Date_Click" />
+                                <MenuFlyoutItem Text="今月" Tag="thismonth" Click="Date_Click" />
+                                <MenuFlyoutItem Text="先月" Tag="lastmonth" Click="Date_Click" />
+                                <MenuFlyoutItem Text="今年" Tag="thisyear" Click="Date_Click" />
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <ToggleButton x:Name="InFolderChip" Style="{StaticResource Chip}" Content="このフォルダ内" Click="InFolderChip_Click" />
+                    <Button Content="検索を保存" FontSize="12" CornerRadius="14" Padding="12,5" Click="SaveSearch_Click" />
+                    <HyperlinkButton Content="検索の書き方" FontSize="12" Click="SearchHelp_Click" />
+                </StackPanel>
+                </ScrollViewer>
+            </Grid>
         </Grid>
 
-        <Grid Grid.Row="1" ColumnDefinitions="240,*" Padding="0,8,12,10" ColumnSpacing="8">
-            <!-- サイドバー -->
+        <Grid Grid.Row="1" ColumnDefinitions="248,*" Padding="0,8,12,10" ColumnSpacing="8">
+            <!-- サイドバー。各見出しの右の矢印で折りたためる -->
             <Grid Grid.Column="0" RowDefinitions="*,Auto"
                   BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Padding="0,0,0,12">
+                <StackPanel x:Name="SidebarPanel" Padding="0,0,0,12">
                     <ListView x:Name="InboxList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" Margin="0,8,0,0" />
-                    <TextBlock Style="{StaticResource SidebarHeader}" Text="クイック アクセス" />
+
+                    <Grid Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto">
+                        <TextBlock Style="{StaticResource SidebarHeader}" Text="クイック アクセス" />
+                        <Button x:Name="QuickToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
+                    </Grid>
                     <ListView x:Name="QuickList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
-                    <Grid ColumnDefinitions="*,Auto">
+
+                    <Grid Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto">
+                        <TextBlock Style="{StaticResource SidebarHeader}" Text="最近使ったフォルダ" />
+                        <Button x:Name="RecentToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
+                    </Grid>
+                    <ListView x:Name="RecentList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
+
+                    <Grid Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto,Auto">
                         <TextBlock Style="{StaticResource SidebarHeader}" Text="お気に入り" />
-                        <Button Grid.Column="1" Background="Transparent" BorderThickness="0" Padding="6,2" Margin="0,8,8,0"
+                        <Button Grid.Column="1" Style="{StaticResource SidebarHeaderButton}"
                                 AutomationProperties.Name="表示中のフォルダを追加" ToolTipService.ToolTip="表示中のフォルダを追加" Click="AddFavorite_Click">
-                            <FontIcon Glyph="&#xE710;" FontSize="14" />
+                            <FontIcon Glyph="&#xE710;" FontSize="16" />
                         </Button>
+                        <Button x:Name="FavoriteToggle" Grid.Column="2" Style="{StaticResource SidebarHeaderButton}" />
                     </Grid>
                     <ListView x:Name="FavoriteList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
-                    <TextBlock Style="{StaticResource SidebarHeader}" Text="PC" />
+
+                    <Grid Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto">
+                        <TextBlock Style="{StaticResource SidebarHeader}" Text="PC" />
+                        <Button x:Name="DriveToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
+                    </Grid>
                     <ListView x:Name="DriveList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Style="{StaticResource SidebarHeader}" Text="容量" />
-                        <Button Grid.Column="1" Background="Transparent" BorderThickness="0" Padding="6,2" Margin="0,8,8,0"
-                                AutomationProperties.Name="容量の内訳・大きいファイル" ToolTipService.ToolTip="容量の内訳・大きいファイル" Click="Capacity_Click">
-                            <FontIcon Glyph="&#xE9D9;" FontSize="14" />
-                        </Button>
+
+                    <!-- 容量の上限（クォータ）があるときだけ表示 -->
+                    <Grid x:Name="ZoneHeader" Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource SidebarHeader}" Text="容量の上限" />
+                        <Button x:Name="ZoneToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
                     </Grid>
                     <ListView x:Name="ZoneList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" />
-                    <Grid ColumnDefinitions="*,Auto">
+
+                    <Grid Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto,Auto">
                         <TextBlock Style="{StaticResource SidebarHeader}" Text="ワークスペース" />
-                        <Button Grid.Column="1" Background="Transparent" BorderThickness="0" Padding="6,2" Margin="0,8,8,0"
+                        <Button Grid.Column="1" Style="{StaticResource SidebarHeaderButton}"
                                 AutomationProperties.Name="現在のタブ構成を保存" ToolTipService.ToolTip="現在のタブ構成を保存" Click="SaveWorkspace_Click">
-                            <FontIcon Glyph="&#xE74E;" FontSize="14" />
+                            <FontIcon Glyph="&#xE74E;" FontSize="16" />
                         </Button>
+                        <Button x:Name="WorkspaceToggle" Grid.Column="2" Style="{StaticResource SidebarHeaderButton}" />
                     </Grid>
                     <ListView x:Name="WorkspaceList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
-                    <TextBlock Style="{StaticResource SidebarHeader}" Text="保存した検索" />
+
+                    <Grid Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto">
+                        <TextBlock Style="{StaticResource SidebarHeader}" Text="保存した検索" />
+                        <Button x:Name="SavedSearchToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
+                    </Grid>
                     <ListView x:Name="SavedSearchList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
                 </StackPanel>
             </ScrollViewer>
-            <StackPanel Grid.Row="1" Spacing="4" Padding="8,8,12,0"
+
+            <!-- 下: 容量・管理・設定（アイコン付きで同じ形に揃える） -->
+            <StackPanel Grid.Row="1" Spacing="2" Padding="8,8,12,0"
                         BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
-                    <Button x:Name="AdminButton" Margin="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Click="Admin_Click" Visibility="Collapsed"
-                            AutomationProperties.Name="ユーザー・権限・監査ログ（管理者）" ToolTipService.ToolTip="ユーザー・権限・監査ログ（管理者）">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon Glyph="&#xE7EF;" FontSize="14" />
-                            <TextBlock Text="管理" />
+                    <Button Style="{StaticResource SidebarFooterButton}" Click="Capacity_Click"
+                            AutomationProperties.Name="容量（フォルダ別の内訳・大きいファイル）" ToolTipService.ToolTip="容量（フォルダ別の内訳・大きいファイル）">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xEDA2;" FontSize="18" Foreground="#30A46C" />
+                            <TextBlock Text="容量" FontSize="14" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <Button Margin="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Click="Settings_Click" AutomationProperties.Name="エクスプローラー置き換え・リンク・表示" ToolTipService.ToolTip="エクスプローラー置き換え・リンク・表示">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon Glyph="&#xE713;" FontSize="14" />
-                            <TextBlock Text="設定" />
+                    <Button x:Name="AdminButton" Style="{StaticResource SidebarFooterButton}" Click="Admin_Click" Visibility="Collapsed"
+                            AutomationProperties.Name="ユーザー・権限・監査ログ（管理者）" ToolTipService.ToolTip="ユーザー・権限・監査ログ（管理者）">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE7EF;" FontSize="18" Foreground="#8E4EC6" />
+                            <TextBlock Text="管理" FontSize="14" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SidebarFooterButton}" Click="Settings_Click"
+                            AutomationProperties.Name="エクスプローラー置き換え・リンク・表示" ToolTipService.ToolTip="エクスプローラー置き換え・リンク・表示">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE713;" FontSize="18" Foreground="#5B6B7F" />
+                            <TextBlock Text="設定" FontSize="14" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
             </StackPanel>

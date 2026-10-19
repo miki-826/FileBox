@@ -50,6 +50,27 @@ public class FileNameTokenizerTests
         Assert.Contains("てすと", t.Words);
         Assert.Contains("計画", t.Words);
     }
+
+    [Fact]
+    public void SplitsKatakanaFromParticlesAndKeepsQuotedTitle()
+    {
+        // カタカナとひらがなの境目で切り、「の」「となる」のような助詞のつながりは語にしない
+        var t = FileNameTokenizer.Tokenize("エクスプローラーの代わりとなるアプリ「ファイルボックス」.txt");
+        Assert.Contains("えくすぷろーらー", t.Words);
+        Assert.Contains("代わり", t.Words);
+        Assert.Contains("あぷり", t.Words);
+        Assert.Contains("ふぁいるぼっくす", t.Words);
+        Assert.DoesNotContain(t.Words, w => w.Contains("の") || w.Contains("となる"));
+        Assert.Equal(new[] { "ふぁいるぼっくす" }, t.Quoted);
+        Assert.Equal("ファイルボックス", t.DisplayWords[t.Words.ToList().IndexOf("ふぁいるぼっくす")]);
+    }
+
+    [Fact]
+    public void KeepsShortOkuriganaOnly()
+    {
+        var t = FileNameTokenizer.Tokenize("見積り依頼.xlsx");
+        Assert.Contains("見積り", t.Words);
+    }
 }
 
 public class SuggestionEngineTests
@@ -175,6 +196,28 @@ public class SuggestionEngineTests
             .Add(@"C:\Users\me\AppData\Local\cache", "請求書_A商事.pdf");
         var result = await Engine(source).SuggestAsync("請求書_A商事_202610.pdf", currentFolder: @"C:\Users\me\Downloads");
         Assert.DoesNotContain(result.Candidates, c => c.Path.Contains("Downloads") || c.Path.Contains("AppData"));
+    }
+
+    [Fact]
+    public async Task ProposesFolderToGroupRelatedFilesInPlace()
+    {
+        var source = new MemorySource()
+            .Add(@"C:\Users\me\Documents", "「ファイルボックス」要件定義書.txt", "家計簿.xlsx", "メモ.txt")
+            .Add(@"C:\Users\me\Documents\メモ", "買い物リスト.txt");
+        var result = await Engine(source).SuggestAsync("エクスプローラーの代わりとなるアプリ「ファイルボックス」.txt", currentFolder: @"C:\Users\me\Documents");
+        Assert.NotNull(result.NewFolder);
+        Assert.Equal(@"C:\Users\me\Documents\ファイルボックス", result.NewFolder!.Path);
+        Assert.True(result.NewFolder.IsNew);
+    }
+
+    [Fact]
+    public async Task QuotedTitleMatchesExistingFolder()
+    {
+        var source = new MemorySource()
+            .Add(@"D:\開発\ファイルボックス", "画面設計.md")
+            .Add(@"D:\開発\メモ", "アプリのアイデア.txt");
+        var result = await Engine(source).SuggestAsync("アプリ「ファイルボックス」の要望.txt");
+        Assert.Equal(@"D:\開発\ファイルボックス", result.Candidates[0].Path);
     }
 
     [Fact]

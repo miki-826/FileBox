@@ -4,7 +4,7 @@
 
 1. **FileBox-Setup.exe** を実行すると、最新版のダウンロードが始まります。
 2. 取得と展開が終わるまで待ちます。進捗を画面で確認できます。
-3. **「FileBox を起動」**を押して使い始めてください。
+3. **「FileBox を起動」**を押して使い始めてください。デスクトップとスタートメニューにも「FileBox」のショートカットができます。
 
 Windows 10 1809 以降 / Windows 11 の x64 用です。必要な .NET 8 と Windows App SDK は本体に同梱しています。
 
@@ -14,7 +14,7 @@ Windows 10 1809 以降 / Windows 11 の x64 用です。必要な .NET 8 と Win
 
 [FileBox-Installer-preview-win-x64.exe をダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe)（[SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe.sha256)）
 
-本体を同梱しているため、導入時にインターネット接続は不要です。`%LOCALAPPDATA%\Programs\FileBox\installed` に入り、スタートメニューに登録されます。管理者権限は不要で、Windows の「設定 → アプリ」からアンインストールできます（ユーザー設定は残ります）。
+本体を同梱しているため、導入時にインターネット接続は不要です。`%LOCALAPPDATA%\Programs\FileBox\installed` に入り、スタートメニューとデスクトップ（導入画面で外せます）にショートカットができます。管理者権限は不要で、Windows の「設定 → アプリ」からアンインストールできます（ユーザー設定は残ります）。
 
 ### ZIP で取得する場合
 

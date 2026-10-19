@@ -104,12 +104,14 @@ public sealed partial class SuggestionEngine
             if (byPath.ContainsKey(path)) continue;
             if (_source.GetFolder(path) is { } info) byPath[path] = info;
         }
+        string stem = FileNameTokenizer.Normalize(Path.GetFileNameWithoutExtension(name.Original));
         if (currentFolder != null)
         {
-            // 今ある場所と、その中（ダウンロードで展開したアーカイブなど）は候補にしない
+            // 今ある場所と、その中（ダウンロードで展開したアーカイブなど）は候補にしない。
+            // ただしフォルダ名が語に一致するサブフォルダ（ドキュメント\ファイルボックス など）は自然な置き場所なので残す
             string cur = Trim(currentFolder);
             foreach (var key in byPath.Keys.Where(k => string.Equals(k, cur, StringComparison.OrdinalIgnoreCase)
-                                                   || k.StartsWith(cur + "\\", StringComparison.OrdinalIgnoreCase)).ToList())
+                                                   || (k.StartsWith(cur + "\\", StringComparison.OrdinalIgnoreCase) && !IsNamedSubfolder(name, k, stem))).ToList())
                 byPath.Remove(key);
         }
         foreach (var key in byPath.Keys.Where(IsExcluded).ToList()) byPath.Remove(key);
@@ -150,6 +152,9 @@ public sealed partial class SuggestionEngine
         }
 
         newFolder ??= ProposeNewFolder(name, scored, top);
+        // 同じ場所に関連するファイルが並んでいるなら、それらをまとめるフォルダを作る提案を優先する
+        if (currentFolder != null && (top.Count == 0 || top[0].Confidence != Confidence.High) && ProposeGroupFolder(name, currentFolder) is { } group)
+            newFolder = group;
         return new SuggestionResult(name, top, newFolder);
     }
 
@@ -177,6 +182,7 @@ public sealed partial class SuggestionEngine
 
         var learned = LearnedScores(name, history);
         string stem = FileNameTokenizer.Normalize(Path.GetFileNameWithoutExtension(name.Original));
+        var quoted = name.Quoted.ToHashSet(StringComparer.Ordinal);
         DateTime now = _clock().ToUniversalTime();
 
         for (int i = 0; i < folders.Count; i++)
@@ -206,7 +212,10 @@ public sealed partial class SuggestionEngine
             double score = _weights.Name * nameSim + _weights.Learned * learn + _weights.FolderName * folderName
                          + _weights.Ext * ext + _weights.Recency * recency;
             // フォルダ名がファイル名（拡張子・日付を除く）と同じなら、ほぼその場所（TypeScript_01.zip → TypeScript_01）
-            if (stem.Length > 0 && string.Equals(FileNameTokenizer.Normalize(Leaf(f.Path)), stem, StringComparison.Ordinal)) score += 0.1;
+            string leafName = FileNameTokenizer.Normalize(Leaf(f.Path));
+            if (stem.Length > 0 && string.Equals(leafName, stem, StringComparison.Ordinal)) score += 0.1;
+            // 括弧で囲んだ語（「ファイルボックス」など）は題名・案件名なので、それがフォルダ名なら強い手掛かり
+            else if (quoted.Any(q => leafName.Contains(q, StringComparison.Ordinal))) score += 0.15;
             // 語の手掛かりが何も無いフォルダ（拡張子・新しさだけ）は候補として弱くする
             if (nameSim < 0.01 && folderName < 0.01 && learn < 0.01) score *= 0.3;
             // 深すぎる階層は保存先らしくないので弱め、利用者のデータ置き場は少し優遇
@@ -408,6 +417,13 @@ public sealed partial class SuggestionEngine
         var pool = scored.Take(5).Where(s => s.Score >= 0.25).ToList();
         if (pool.Count == 0 && NoFolderTypes.Contains(name.Ext)) return null;   // インストーラーや圧縮ファイルに分類フォルダは要らない
 
+        // 括弧で囲んだ語を優先し、同じなら長い語
+        bool Better(int i, int j)
+        {
+            bool qi = IsQuoted(name, i), qj = IsQuoted(name, j);
+            return qi != qj ? qi : name.Words[i].Length > name.Words[j].Length;
+        }
+
         // 候補のどのフォルダ名・ファイル名にも出てこない語が「新しい分類名」になる
         int bestIndex = -1;
         for (int i = 0; i < name.Words.Count; i++)
@@ -419,10 +435,11 @@ public sealed partial class SuggestionEngine
             if (inPath) continue;
             int seen = pool.Count(s => s.Info.FileNames.Any(f => FileNameTokenizer.Normalize(f).Contains(w, StringComparison.Ordinal)));
             if (seen >= 1) continue;   // 既存フォルダのファイルに使われている語は、そこが置き場所（新しい分類ではない）
-            if (bestIndex < 0 || name.Words[i].Length > name.Words[bestIndex].Length) bestIndex = i;
+            if (bestIndex < 0 || Better(i, bestIndex)) bestIndex = i;
         }
         if (bestIndex < 0) return null;
         string newName = SanitizeFolderName(name.DisplayWords[bestIndex]);
+
         if (newName.Length == 0) return null;
 
         string? parent = pool.Count == 0 ? FallbackRoot : CommonParent(name, pool);
@@ -433,6 +450,49 @@ public sealed partial class SuggestionEngine
 
         var conf = top.Count == 0 || top[0].Confidence == Confidence.Low ? Confidence.Medium : Confidence.Low;
         return new FolderSuggestion(path, 0, conf, $"「{Leaf(parent)}」に「{newName}」フォルダを作成", IsNew: true);
+    }
+
+    static bool IsQuoted(TokenizedName name, int index) => name.Quoted.Any(q => q.Contains(name.Words[index], StringComparison.Ordinal));
+
+    /// <summary>名前が語に一致する（ファイル名そのものではない）サブフォルダ。</summary>
+    static bool IsNamedSubfolder(TokenizedName name, string path, string stem) =>
+        FolderNameMatch(name, path, out _) >= 0.5 && !string.Equals(FileNameTokenizer.Normalize(Leaf(path)), stem, StringComparison.Ordinal);
+
+    /// <summary>
+    /// 今の場所に同じ語（題名・案件名）を含むファイルが他にもあれば、その語のフォルダを作ってまとめる提案（§1.4）。
+    /// 例: ドキュメント\「ファイルボックス」要件定義書.txt があるところへ「…アプリ「ファイルボックス」.txt」→ ドキュメント\ファイルボックス
+    /// </summary>
+    internal FolderSuggestion? ProposeGroupFolder(TokenizedName name, string currentFolder)
+    {
+        if (name.Words.Count == 0 || IsExcluded(currentFolder) || NoFolderTypes.Contains(name.Ext)) return null;
+        var info = _source.GetFolder(currentFolder);
+        if (info == null) return null;
+        string self = name.Original;
+        var siblings = info.FileNames.Where(f => !string.Equals(f, self, StringComparison.OrdinalIgnoreCase))
+                                     .Select(FileNameTokenizer.Tokenize).ToList();
+        if (siblings.Count == 0) return null;
+
+        int best = -1, bestCount = 0;
+        for (int i = 0; i < name.Words.Count; i++)
+        {
+            string w = name.Words[i];
+            if (w.Length < 3 && !(w.Length == 2 && w.All(c => c is >= '一' and <= '鿿'))) continue;   // 短い語は偶然一致しやすい
+            int count = siblings.Count(s => s.Words.Contains(w) || s.Quoted.Any(q => q.Contains(w, StringComparison.Ordinal)));
+            if (count == 0) continue;
+            bool better = best < 0 || IsQuoted(name, i) && !IsQuoted(name, best)
+                || IsQuoted(name, i) == IsQuoted(name, best) && (count > bestCount || count == bestCount && w.Length > name.Words[best].Length);
+            if (better) { best = i; bestCount = count; }
+        }
+        if (best < 0) return null;
+        // 兄弟の半数以上に出てくる語は、そのフォルダ自体の分類名（ここにまとめる意味がない）
+        if (siblings.Count >= 4 && bestCount * 2 >= siblings.Count) return null;
+
+        string folderName = SanitizeFolderName(name.DisplayWords[best]);
+        if (folderName.Length == 0) return null;
+        // 同じ名前のサブフォルダがすでにあれば、それは通常の候補として出る
+        if (info.SubfolderNames.Any(s => string.Equals(FileNameTokenizer.Normalize(s), name.Words[best], StringComparison.Ordinal))) return null;
+        return new FolderSuggestion(Path.Combine(Trim(currentFolder), folderName), 0, Confidence.Medium,
+            $"「{name.DisplayWords[best]}」を含むファイルがここに {bestCount} 件あります。まとめるフォルダを作成", IsNew: true);
     }
 
     /// <summary>候補群を最も多く含む最下位の祖先。候補がまとまらなければ1位のフォルダ（名前が一致）かその親。</summary>

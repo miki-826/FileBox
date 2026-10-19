@@ -1,9 +1,11 @@
 using FileBox.App.Models;
 using FileBox.App.Services;
 using FileBox.App.ViewModels;
+using FileBox.Core.Files;
 using FileBox.Core.Suggest;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
@@ -19,6 +21,24 @@ public sealed partial class InboxPaneView : UserControl
         ViewModel = viewModel;
         _actions = actions;
         InitializeComponent();
+        ViewModel.ItemsChanged += ApplyItems;
+        ApplyItems();
+    }
+
+    /// <summary>届いた日（今日・昨日・今週・先週・今月…）ごとに見出しを付けて表示する。選択中の項目は残す。</summary>
+    void ApplyItems()
+    {
+        var selected = List.SelectedItem;
+        var now = DateTime.Now;
+        var firstDay = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var groups = ViewModel.Items
+            .OrderByDescending(i => i.Arrived)
+            .GroupBy(i => DateGroup.Classify(i.Arrived, now, firstDay))
+            .OrderBy(g => g.Key)
+            .Select(g => new ItemGroup($"{DateGroup.Label(g.Key)}（{g.Count()}）", g))
+            .ToList();
+        List.ItemsSource = new CollectionViewSource { IsSourceGrouped = true, Source = groups }.View;
+        if (selected != null && ViewModel.Items.Contains(selected)) List.SelectedItem = selected;
     }
 
     public static Brush BadgeBrush(Confidence confidence, bool hasTarget) =>

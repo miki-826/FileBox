@@ -24,7 +24,7 @@ Windows のエクスプローラーの代わりに使うことを目指したフ
 
 Windows 10 1809 以降 / Windows 11（x64）に対応。必要な .NET 8 と Windows App SDK は本体に同梱しているため、別途インストールする必要はありません。
 
-**本体同梱のインストーラー**: [FileBox-Installer-preview-win-x64.exe](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe)（オフラインで導入でき、スタートメニューへの登録と「アプリ」からのアンインストールに対応。管理者権限は不要。[SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe.sha256)）
+**本体同梱のインストーラー**: [FileBox-Installer-preview-win-x64.exe](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe)（オフラインで導入でき、スタートメニュー・デスクトップへのショートカット作成と「アプリ」からのアンインストールに対応。管理者権限は不要。[SHA-256](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-Installer-preview-win-x64.exe.sha256)）
 
 - [配布ページ・使い方](https://github.com/miki-826/FileBox/releases/tag/preview)
 - [本体 ZIP を直接ダウンロード](https://github.com/miki-826/FileBox/releases/download/preview/FileBox-preview-win-x64.zip)（手動で展開する方向け）

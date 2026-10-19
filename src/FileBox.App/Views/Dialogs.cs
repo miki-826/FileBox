@@ -29,6 +29,21 @@ public static class Dialogs
         return result == ContentDialogResult.Primary && box.Text.Trim().Length > 0 ? box.Text.Trim() : null;
     }
 
+    /// <summary>確認ダイアログ。primary を選んだら true。</summary>
+    public static async Task<bool> ConfirmAsync(XamlRoot root, string title, string message, string primary)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = root,
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = primary,
+            CloseButtonText = "キャンセル",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
     public static async Task MessageAsync(XamlRoot root, string title, string message)
     {
         var dialog = new ContentDialog

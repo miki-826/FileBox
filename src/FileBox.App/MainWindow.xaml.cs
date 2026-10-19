@@ -37,6 +37,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         InitializeComponent();
         SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1400, 860));
+        try { AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "FileBox.ico")); }
+        catch (Exception) { }
 
         _searchTimer = DispatcherQueue.CreateTimer();
         _searchTimer.Interval = TimeSpan.FromMilliseconds(150);
@@ -49,6 +51,9 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         _statusTimer.Start();
 
         FolderPaneViewModel.ShowHidden = _store.GetSetting("showHidden") == "1";
+        ViewPreferences.Initialize(_store);
+        ViewPreferences.ColorsChanged += OnFolderColorsChanged;
+        FolderPaneViewModel.Visited += OnFolderVisited;
         SuggestionService.Initialize(_store);
         InboxService.Initialize(_store, DispatcherQueue);
         InboxService.Instance.CountChanged += UpdateInboxEntry;
@@ -57,6 +62,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         InitializePolicy();
         SaveDialogWatcher.Initialize(_store, DispatcherQueue);
         RegisterAccelerators();
+        InitializeSections();
         LoadSidebar();
         RestoreSession();
         Closed += OnClosed;
@@ -118,13 +124,114 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         if (_statusSource != null) _statusSource.PropertyChanged += OnStatusSourceChanged;
         UpdateStatusText();
         SyncInFolderChip();
+        UpdateAddressBar();
     }
 
     void OnStatusSourceChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(FolderPaneViewModel.StatusText) or nameof(FolderPaneViewModel.CurrentPath)) UpdateStatusText();
-        if (e.PropertyName == nameof(FolderPaneViewModel.CurrentPath)) SyncInFolderChip();
+        if (e.PropertyName == nameof(FolderPaneViewModel.CurrentPath))
+        {
+            SyncInFolderChip();
+            UpdateAddressBar();
+        }
     }
+
+    // ================================================================ 上のバー（戻る・進む・上へ・アドレス）
+
+    /// <summary>上のバーが操作する区画: 選択中のフォルダ区画（検索結果などを選んでいるときはタブ内のフォルダ区画）。</summary>
+    FolderPaneViewModel? AddressSource => _statusSource;
+
+    void UpdateAddressBar()
+    {
+        var folder = AddressSource;
+        TopBackButton.IsEnabled = folder?.CanGoBack == true;
+        TopForwardButton.IsEnabled = folder?.CanGoForward == true;
+        TopUpButton.IsEnabled = folder?.CanGoUp == true;
+        if (folder == null)
+        {
+            // フォルダ区画の無いタブ（ごみ箱・受け取りボックスなど）は区画の名前を出す
+            var pane = CurrentTab?.Model.ActivePane;
+            TopBreadcrumb.ItemsSource = pane == null ? new List<string>() : new List<string> { pane.Title };
+            var (glyph, color) = pane switch
+            {
+                ShellPaneViewModel { IsRecycleBin: true } => ("\uE74D", "#8B8D98"),
+                ShellPaneViewModel => ("\uE968", "#05A2C2"),
+                InboxPaneViewModel => ("\uE896", "#30A46C"),
+                SearchPaneViewModel => ("\uE721", "#0090FF"),
+                CapacityPaneViewModel => ("\uEDA2", "#30A46C"),
+                AdminPaneViewModel => ("\uE7EF", "#8E4EC6"),
+                _ => ("\uE8B7", "#E8A33D"),
+            };
+            TopAddressIcon.Glyph = glyph;
+            TopAddressIcon.Foreground = Converters.HexBrush(color);
+        }
+        else
+        {
+            TopBreadcrumb.ItemsSource = folder.Breadcrumbs.Select(b => b.Name).ToList();
+            TopAddressIcon.Glyph = folder.IsPc ? "\uE7F8" : "\uE8B7";
+            TopAddressIcon.Foreground = Converters.HexBrush(folder.IsPc ? "#3E63DD" : ViewPreferences.FolderColor(folder.CurrentPath) ?? "#E8A33D");
+        }
+        // 検索欄に「どこを検索するか」を出す
+        var q = QueryParser.Parse(SearchBox.Text);
+        string? scope = q.InPath == null ? null : Path.GetFileName(q.InPath.TrimEnd('\\')) is { Length: > 0 } n ? n : q.InPath;
+        SearchBox.PlaceholderText = scope != null ? $"「{scope}」の中を検索（Ctrl+F）" : "PC 全体を検索（Ctrl+F）";
+    }
+
+    void TopBack_Click(object sender, RoutedEventArgs e) => _ = AddressSource?.GoBackAsync();
+    void TopForward_Click(object sender, RoutedEventArgs e) => _ = AddressSource?.GoForwardAsync();
+    void TopUp_Click(object sender, RoutedEventArgs e) => _ = AddressSource?.GoUpAsync();
+    void TopRefresh_Click(object sender, RoutedEventArgs e) => _ = AddressSource?.RefreshAsync();
+
+    void TopBreadcrumb_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
+    {
+        if (AddressSource is not { } folder) return;
+        var crumbs = folder.Breadcrumbs;
+        if (args.Index < crumbs.Count) _ = folder.NavigateAsync(crumbs[args.Index].Path);
+    }
+
+    void TopBreadcrumbHost_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        // パンくずの項目以外（余白）をクリックしたら直接入力モードへ
+        if (e.OriginalSource is FrameworkElement fe && fe.DataContext is string) return;
+        BeginTopAddressEdit();
+    }
+
+    void BeginTopAddressEdit()
+    {
+        TopBreadcrumbHost.Visibility = Visibility.Collapsed;
+        TopAddressBox.Visibility = Visibility.Visible;
+        TopAddressBox.Text = AddressSource is { IsPc: false } f ? f.CurrentPath : "PC";
+        TopAddressBox.Focus(FocusState.Programmatic);
+        TopAddressBox.SelectAll();
+    }
+
+    void EndTopAddressEdit()
+    {
+        TopAddressBox.Visibility = Visibility.Collapsed;
+        TopBreadcrumbHost.Visibility = Visibility.Visible;
+    }
+
+    void TopAddressBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            string text = TopAddressBox.Text;
+            EndTopAddressEdit();
+            if (ShellLocation(text) is { } shell) OpenShellPane(shell);
+            else if (ShellService.ResolveAddress(text) is not { } path) ShowInfo($"場所が見つかりません: {text}", InfoBarSeverity.Warning);
+            else if (File.Exists(path)) ShellService.Open(path);
+            else NavigateActive(path);
+            e.Handled = true;
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            EndTopAddressEdit();
+            e.Handled = true;
+        }
+    }
+
+    void TopAddressBox_LostFocus(object sender, RoutedEventArgs e) => EndTopAddressEdit();
 
     void UpdateStatusText()
     {
@@ -240,6 +347,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             if (arg == "--capacity") { OpenCapacity(); continue; }
             if (arg == "--admin") { OpenAdmin(); continue; }
             if (FileBoxUri.IsFileBoxUri(arg)) { HandleLink(arg); continue; }
+            if (ShellLocation(arg) is { } shell) { OpenShellPane(shell); continue; }
             string? path = ShellService.ResolveAddress(arg);
             if (path == null || (path.Length > 0 && !Directory.Exists(path) && !File.Exists(path)))
             {
@@ -262,6 +370,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
     void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
         SyncChipsFromQuery();
+        UpdateAddressBar();
         if (args.Reason == AutoSuggestionBoxTextChangeReason.SuggestionChosen) return;
         sender.ItemsSource = sender.Text.Length == 0 ? _store.GetSearchHistory(10) : null;
         _searchTimer.Stop();
@@ -439,15 +548,22 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
     {
         UpdateInboxEntry();
         QuickList.ItemsSource = ShellService.QuickAccess
-            .Select(q => (q.Name, q.Glyph, Path: ShellService.KnownFolder(q.Id)))
+            .Select((q, i) => (q.Name, q.Glyph, Path: ShellService.KnownFolder(q.Id), Color: QuickColors[i % QuickColors.Length]))
             .Where(q => q.Path != null)
-            .Select(q => new SidebarItem { Name = q.Name, Glyph = q.Glyph, Path = q.Path!, Kind = SidebarKind.Folder })
-            // 仮想フォルダはエクスプローラーで開く（02_機能設計 §7.2）
-            .Append(new SidebarItem { Name = "ネットワーク", Glyph = "", Path = "shell:NetworkPlacesFolder", Kind = SidebarKind.Folder })
-            .Append(new SidebarItem { Name = "ごみ箱", Glyph = "", Path = "shell:RecycleBinFolder", Kind = SidebarKind.Folder })
+            .Select(q => new SidebarItem { Name = q.Name, Glyph = q.Glyph, Path = q.Path!, Kind = SidebarKind.Folder, Color = q.Color })
+            // ネットワーク・ごみ箱も FileBox の中で開く（エクスプローラーを出さない）
+            .Concat(ShellPlaces())
             .ToList();
         FavoriteList.ItemsSource = _store.GetFavorites()
-            .Select(f => new SidebarItem { Name = f.Label ?? (Path.GetFileName(f.Path.TrimEnd('\\')) is { Length: > 0 } n ? n : f.Path), Glyph = "\uE734", Path = f.Path, Id = f.Id, Kind = SidebarKind.Favorite })
+            .Select(f => new SidebarItem
+            {
+                Name = f.Label ?? (Path.GetFileName(f.Path.TrimEnd('\\')) is { Length: > 0 } n ? n : f.Path),
+                Glyph = "\uE734",
+                Path = f.Path,
+                Id = f.Id,
+                Kind = SidebarKind.Favorite,
+                Color = ViewPreferences.FolderColor(f.Path) ?? "#E2A300",
+            })
             .ToList();
         DriveList.ItemsSource = DriveInfo.GetDrives().Where(d => d.IsReady).Select(d =>
         {
@@ -460,14 +576,16 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
                 Kind = SidebarKind.Drive,
                 Usage = d.TotalSize > 0 ? 1.0 - (double)d.TotalFreeSpace / d.TotalSize : 0,
                 Detail = $"空き {Format.HumanSize(d.TotalFreeSpace)} / {Format.HumanSize(d.TotalSize)}",
+                Color = "#5B8DEF",
             };
         }).ToList();
         WorkspaceList.ItemsSource = _store.GetWorkspaces()
-            .Select(w => new SidebarItem { Name = w.Name, Glyph = "\uE8A9", Id = w.Id, Kind = SidebarKind.Workspace })
+            .Select(w => new SidebarItem { Name = w.Name, Glyph = "\uE8A9", Id = w.Id, Kind = SidebarKind.Workspace, Color = "#8E4EC6" })
             .ToList();
         SavedSearchList.ItemsSource = _store.GetSavedSearches()
-            .Select(s => new SidebarItem { Name = s.Name, Glyph = "\uE721", Id = s.Id, Query = s.Query, Kind = SidebarKind.SavedSearch })
+            .Select(s => new SidebarItem { Name = s.Name, Glyph = "\uE721", Id = s.Id, Query = s.Query, Kind = SidebarKind.SavedSearch, Color = "#0090FF" })
             .ToList();
+        _ = LoadRecentAsync();
     }
 
     void Sidebar_ItemClick(object sender, ItemClickEventArgs e)
@@ -488,9 +606,11 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
                 SearchBox.Text = item.Query ?? "";
                 AddTab(new TabViewModel(new SearchPaneViewModel(item.Query ?? "")));
                 break;
+            case SidebarKind.Shell:
+                OpenShellPane(item.Path);
+                break;
             default:
-                if (item.Path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)) ShellService.OpenInExplorer(item.Path);
-                else NavigateActive(item.Path);
+                NavigateActive(item.Path);
                 break;
         }
     }
@@ -523,13 +643,18 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             case SidebarKind.SavedSearch:
                 Add("削除", "\uE74D", () => { _store.DeleteSavedSearch(item.Id); LoadSidebar(); });
                 break;
+            case SidebarKind.Shell:
+                Add("開く", "\uE8AD", () => OpenShellPane(item.Path));
+                Add("エクスプローラーで開く", "\uEC50", () => ShellService.OpenInExplorer(item.Path == ShellPaneViewModel.Recycle ? "shell:RecycleBinFolder" : "shell:NetworkPlacesFolder"));
+                break;
             default:
                 Add("新しいタブで開く", "\uE8A7", () => OpenInNewTab(item.Path));
                 Add("隣の区画で開く", "\uE89F", () => { if (CurrentTab is { } t) OpenInAdjacentPane(t.Model.ActivePane, item.Path); });
                 Add("エクスプローラーで開く", "\uEC50", () => ShellService.OpenInExplorer(item.Path));
                 menu.Items.Add(LinkMenu.Build(item.Path));
                 if (item.Kind == SidebarKind.Favorite) Add("お気に入りから削除", "\uE74D", () => { _store.RemoveFavorite(item.Id); LoadSidebar(); });
-                else if (item.Kind == SidebarKind.Folder) Add("お気に入りに追加", "\uE734", () => AddFavorite(item.Path));
+                else if (item.Kind is SidebarKind.Folder or SidebarKind.Recent) Add("お気に入りに追加", "\uE734", () => AddFavorite(item.Path));
+                if (item.Kind == SidebarKind.Recent) Add("一覧から外す", "\uE711", () => { _store.RemoveRecent(item.Path); _ = LoadRecentAsync(); });
                 Add("プロパティ", "\uE946", () => ShellService.ShowProperties(item.Path));
                 break;
         }
@@ -689,7 +814,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
     void EditAddress()
     {
-        if (CurrentTab is not { } tab || tab.Model.ActiveFolder is not { } folder) return;
+        if (CurrentTab is not { } tab) return;
+        if (tab.Model.PaneCount == 1 || tab.Model.ActiveFolder is not { } folder) { BeginTopAddressEdit(); return; }
         (tab.Host.ViewFor(folder) as FolderPaneView)?.BeginEditAddress();
     }
 

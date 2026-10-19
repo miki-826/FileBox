@@ -4,7 +4,7 @@ using FileBox.App.Models;
 
 namespace FileBox.App.ViewModels;
 
-public enum PaneKind { Folder, Preview, Search, Inbox, Capacity, Admin }
+public enum PaneKind { Folder, Preview, Search, Inbox, Capacity, Admin, Shell }
 
 /// <summary>分割ペイン1区画の ViewModel（02_機能設計 §2.1）。</summary>
 public abstract partial class PaneViewModel : ObservableObject
@@ -34,6 +34,7 @@ public abstract partial class PaneViewModel : ObservableObject
             "inbox" => new InboxPaneViewModel(id),
             "capacity" => new CapacityPaneViewModel((string?)node["path"], id),
             "admin" => new AdminPaneViewModel(id),
+            "shell" => new ShellPaneViewModel((string?)node["location"] ?? ShellPaneViewModel.Recycle, id),
             _ => null,
         };
         return pane;

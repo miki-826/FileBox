@@ -34,6 +34,7 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\FileBox.exe
+SetupIconFile=..\src\FileBox.App\Assets\FileBox.ico
 UninstallDisplayName=FileBox 開発プレビュー
 ; 起動中の FileBox / Indexer は再起動マネージャーで終了を確認してから上書きする
 CloseApplications=yes
@@ -44,7 +45,8 @@ RestartApplications=no
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "デスクトップにショートカットを作成する"; GroupDescription: "追加のショートカット:"; Flags: unchecked
+; 既定でオン（インストール後すぐデスクトップから起動できるように）。不要なら画面でチェックを外せる
+Name: "desktopicon"; Description: "デスクトップにショートカットを作成する"; GroupDescription: "追加のショートカット:"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

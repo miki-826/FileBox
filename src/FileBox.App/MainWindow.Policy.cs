@@ -27,9 +27,11 @@ public sealed partial class MainWindow
             Glyph = "",
             Path = z.Path,
             Kind = SidebarKind.Zone,
+            Color = "#30A46C",
             Usage = z.LimitBytes > 0 && z.UsedBytes >= 0 ? Math.Min(1, (double)z.UsedBytes / z.LimitBytes) : 0,
             Detail = z.UsedBytes < 0 ? "使用量を集計できません" : $"{Format.HumanSize(z.UsedBytes)} / {Format.HumanSize(z.LimitBytes)}",
         }).ToList();
+        ZoneHeader.Visibility = s?.Zones is { Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>容量分析を開く（すでにあればその場所を表示）。</summary>

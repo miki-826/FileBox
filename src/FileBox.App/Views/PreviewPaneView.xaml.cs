@@ -49,6 +49,8 @@ public sealed partial class PreviewPaneView : UserControl
         _cts?.Cancel();
         var cts = _cts = new CancellationTokenSource();
         HeaderIcon.Glyph = item.Glyph;
+        HeaderIcon.Foreground = Converters.ItemBrush(item.FullPath, item.Extension, item.IsDirectory, item.IsDrive);
+        _ = ShowDetailsAsync(item, cts.Token);
         HeaderName.Text = item.Name;
         HeaderDetail.Text = item.IsDirectory ? item.FullPath : $"{item.HumanSize} ・ {item.ModifiedText} ・ {item.Location}";
         OpenButton.IsEnabled = true;
@@ -212,10 +214,107 @@ public sealed partial class PreviewPaneView : UserControl
         return Message($"フォルダー {dirs:N0} 個 ・ ファイル {files:N0} 個（直下 {Format.HumanSize(bytes)}）");
     }
 
+    // ---------------------------------------------------------------- 詳細
+
+    /// <summary>Windows のプロパティから表示するもの（ある項目だけ出す）。</summary>
+    static readonly (string Key, string Label)[] ExtendedProperties =
+    {
+        ("System.Title", "タイトル"),
+        ("System.Author", "作成者"),
+        ("System.Document.LastAuthor", "最終更新者"),
+        ("System.Company", "会社"),
+        ("System.Image.Dimensions", "大きさ"),
+        ("System.Photo.DateTaken", "撮影日時"),
+        ("System.Photo.CameraModel", "カメラ"),
+        ("System.Media.Duration", "長さ"),
+        ("System.Video.FrameWidth", "フレーム幅"),
+        ("System.Video.FrameHeight", "フレーム高"),
+        ("System.Music.Artist", "アーティスト"),
+        ("System.Music.AlbumTitle", "アルバム"),
+        ("System.Keywords", "タグ"),
+        ("System.Comment", "コメント"),
+    };
+
+    async Task ShowDetailsAsync(FileItem item, CancellationToken ct)
+    {
+        var rows = new List<(string Label, string Value)>();
+        try
+        {
+            FileSystemInfo info = item.IsDirectory ? new DirectoryInfo(item.FullPath) : new FileInfo(item.FullPath);
+            info.Refresh();
+            rows.Add(("種類", item.TypeText));
+            rows.Add(("場所", item.IsDrive ? item.FullPath : item.Location));
+            if (info is FileInfo fi && fi.Exists) rows.Add(("サイズ", $"{Format.HumanSize(fi.Length)}（{fi.Length:N0} バイト）"));
+            if (info.Exists)
+            {
+                rows.Add(("作成日時", info.CreationTime.ToString("yyyy/MM/dd HH:mm")));
+                rows.Add(("更新日時", info.LastWriteTime.ToString("yyyy/MM/dd HH:mm")));
+                rows.Add(("アクセス日時", info.LastAccessTime.ToString("yyyy/MM/dd HH:mm")));
+                if (Attributes(info.Attributes) is { Length: > 0 } attrs) rows.Add(("属性", attrs));
+            }
+        }
+        catch (Exception ex) { rows.Add(("エラー", ex.Message)); }
+        RenderDetails(rows);
+
+        if (item.IsDirectory) return;
+        try
+        {
+            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(item.FullPath);
+            var props = await file.Properties.RetrievePropertiesAsync(ExtendedProperties.Select(p => p.Key));
+            if (ct.IsCancellationRequested) return;
+            foreach (var (key, label) in ExtendedProperties)
+                if (props.TryGetValue(key, out var value) && FormatProperty(key, value) is { Length: > 0 } text)
+                    rows.Add((label, text));
+            RenderDetails(rows);
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }   // 対応していない種類・アクセスできないファイルは基本の詳細だけ
+    }
+
+    void RenderDetails(List<(string Label, string Value)> rows)
+    {
+        DetailsGrid.Children.Clear();
+        DetailsGrid.RowDefinitions.Clear();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            DetailsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var label = new TextBlock { Text = rows[i].Label, FontSize = 12, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
+            var value = new TextBlock { Text = rows[i].Value, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
+            Grid.SetRow(label, i);
+            Grid.SetRow(value, i);
+            Grid.SetColumn(value, 1);
+            DetailsGrid.Children.Add(label);
+            DetailsGrid.Children.Add(value);
+        }
+        DetailsHost.Visibility = rows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    static string Attributes(FileAttributes a)
+    {
+        var names = new List<string>();
+        if (a.HasFlag(FileAttributes.ReadOnly)) names.Add("読み取り専用");
+        if (a.HasFlag(FileAttributes.Hidden)) names.Add("隠し");
+        if (a.HasFlag(FileAttributes.System)) names.Add("システム");
+        if (a.HasFlag(FileAttributes.Compressed)) names.Add("圧縮");
+        if (a.HasFlag(FileAttributes.Encrypted)) names.Add("暗号化");
+        if (a.HasFlag(FileAttributes.Offline) || a.HasFlag((FileAttributes)0x400000)) names.Add("オンラインのみ（クラウド）");
+        return string.Join("・", names);
+    }
+
+    static string? FormatProperty(string key, object? value) => value switch
+    {
+        null => null,
+        string s => s.Trim(),
+        string[] arr => string.Join("; ", arr.Where(v => !string.IsNullOrWhiteSpace(v))),
+        DateTimeOffset d => d.LocalDateTime.ToString("yyyy/MM/dd HH:mm"),
+        ulong ticks when key == "System.Media.Duration" => TimeSpan.FromTicks((long)ticks).ToString(ticks >= (ulong)TimeSpan.TicksPerHour ? @"h\:mm\:ss" : @"m\:ss"),
+        uint n when key.StartsWith("System.Video.Frame") => $"{n} px",
+        _ => value.ToString(),
+    };
+
     static UIElement Info(FileItem item)
     {
         var panel = new StackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        panel.Children.Add(new FontIcon { Glyph = item.Glyph, FontSize = 64 });
+        panel.Children.Add(new FontIcon { Glyph = item.Glyph, FontSize = 64, Foreground = Converters.ItemBrush(item.FullPath, item.Extension, item.IsDirectory, item.IsDrive) });
         panel.Children.Add(new TextBlock { Text = item.Name, HorizontalAlignment = HorizontalAlignment.Center, TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock { Text = $"{item.TypeText} ・ {item.HumanSize}", HorizontalAlignment = HorizontalAlignment.Center, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] });
         panel.Children.Add(new TextBlock { Text = "この種類はプレビューに未対応です（Office 等は今後のフェーズで対応）", FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"] });

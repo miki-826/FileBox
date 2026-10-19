@@ -16,7 +16,8 @@ public sealed partial class InboxItem : ObservableObject
     public string SourceName => Path.GetFileName(Path.GetDirectoryName(FullPath) ?? "") ?? "";
     public long Size { get; init; }
     public DateTime Arrived { get; init; }
-    public string Glyph => FileKinds.Glyph(Path.GetExtension(FullPath));
+    public string Extension => Path.GetExtension(FullPath).ToLowerInvariant();
+    public string Glyph => FileKinds.Glyph(Extension);
     public string Detail => $"{Format.HumanSize(Size)} · {Arrived:M/d HH:mm} · {SourceName}";
 
     [ObservableProperty]

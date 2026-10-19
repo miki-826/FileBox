@@ -14,6 +14,9 @@ public sealed record TokenizedName(
     int? Month,
     string Ext)
 {
+    /// <summary>「」『』【】などの括弧で囲まれた語（題名・案件名であることが多く、分類名の手掛かりとして強い）。</summary>
+    public IReadOnlyList<string> Quoted { get; init; } = Array.Empty<string>();
+
     /// <summary>学習履歴に保存する形（語のみ、スペース区切り）。</summary>
     public string Key => string.Join(' ', Words);
 }
@@ -32,6 +35,14 @@ public static partial class FileNameTokenizer
         "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
         "exe", "msi", "setup", "install", "installer", "x64", "x86", "win", "win32", "win64", "bit", "release", "build", "alpha", "beta",
         "screenshot", "すくりーんしょっと", "download", "だうんろーど", "output", "export", "data", "test", "sample",
+    };
+
+    /// <summary>ひらがなだけの語のうち、助詞・助動詞のつながりで手掛かりにならないもの。</summary>
+    static readonly HashSet<string> FunctionWords = new(StringComparer.Ordinal)
+    {
+        "となる", "となった", "について", "における", "による", "により", "ための", "ためのもの", "など", "こと", "もの", "よう", "ように",
+        "する", "した", "して", "します", "しました", "です", "ます", "でした", "ない", "ある", "いる", "なる", "から", "まで", "より",
+        "また", "および", "ならびに", "あり", "なし", "との", "での", "への", "からの", "までの", "その", "この", "あの", "どの", "とか",
     };
 
     public static TokenizedName Tokenize(string fileName)
@@ -53,6 +64,7 @@ public static partial class FileNameTokenizer
             string segment = rest.Substring(start, length);
             if (segment.All(char.IsDigit)) continue;
             if (segment.Length == 1 && !IsKanji(segment[0])) continue;
+            if (segment.All(IsHiragana) && (segment.Length <= 2 || FunctionWords.Contains(segment))) continue;   // 「の」「となる」など
             if (segment.Length <= 2 && segment.All(char.IsAsciiLetter)) continue;   // 英字2文字以下（pm, xr）は手掛かりにならない
             if (StopWords.Contains(segment) || words.Contains(segment)) continue;
             words.Add(segment);
@@ -80,7 +92,13 @@ public static partial class FileNameTokenizer
                 if (!grams.Contains(g) && !words.Contains(g)) grams.Add(g);
             }
         }
-        return new TokenizedName(fileName, words, displayWords, grams, year, month, ext);
+        var quoted = new List<string>();
+        foreach (Match m in Bracketed().Matches(display))
+        {
+            string q = Normalize(m.Groups[1].Value).Trim();
+            if (q.Length >= 2 && !q.All(char.IsDigit) && !quoted.Contains(q)) quoted.Add(q);
+        }
+        return new TokenizedName(fileName, words, displayWords, grams, year, month, ext) { Quoted = quoted };
     }
 
     /// <summary>NFKC（全角英数→半角）＋小文字化＋カタカナ→ひらがな。</summary>
@@ -89,6 +107,9 @@ public static partial class FileNameTokenizer
 
     [GeneratedRegex(@"[A-Za-z]+")]
     private static partial Regex LatinRun();
+
+    [GeneratedRegex(@"[「『【\[(（〈《""]([^」』】\])）〉》""]{2,40})[」』】\])）〉》""]")]
+    private static partial Regex Bracketed();
 
     /// <summary>フォルダ名を語に分ける（末尾の「.xxx」を拡張子扱いしない）。</summary>
     public static IReadOnlyList<string> FolderWords(string folderName) => Tokenize(folderName + ".x").Words;
@@ -142,21 +163,32 @@ public static partial class FileNameTokenizer
 
     // ---------------------------------------------------------------- 分割
 
-    /// <summary>語の (開始位置, 長さ) を返す。CamelCase の境界は大文字小文字を残した <paramref name="cased"/> で判定する。</summary>
+    /// <summary>
+    /// 語の (開始位置, 長さ) を返す。文字種（カタカナ・ひらがなの区別を含む）と CamelCase の境界は、
+    /// 大文字小文字・カタカナを残した <paramref name="cased"/> で判定する。
+    /// </summary>
     static IEnumerable<(int Start, int Length)> SplitSegments(string text, string cased)
     {
         int start = -1;
+        int okurigana = 0;   // 漢字に続けてつないだひらがなの数
         CharKind prev = CharKind.Separator;
         for (int i = 0; i < text.Length; i++)
         {
-            char c = text[i];
+            // 日付として取り除いた部分は text 側だけ空白になっている
+            char c = text[i] == ' ' ? ' ' : cased[i];
             var kind = Kind(c);
+            // 長音「ー」は直前のかなと同じ種類（「エクスプローラー」「ぶろーど」）
+            if (c == 'ー' && prev is CharKind.Katakana or CharKind.Hiragana) kind = prev;
             // 「ABC商事」「NTT東日本」のような大文字略語＋漢字は1語のまま
             bool acronymJoin = prev == CharKind.Latin && kind == CharKind.Kanji && start >= 0
                 && cased.AsSpan(start, i - start).ToString().All(char.IsUpper);
+            // 漢字に続く送り仮名（「見積り」「代わり」）は 2 文字まで同じ語として扱う（その先の「となる」などは別の語）
+            bool okuriganaJoin = kind == CharKind.Hiragana
+                && ((prev == CharKind.Kanji && IsOkurigana(c)) || (prev == CharKind.Hiragana && okurigana is > 0 and < 2));
             bool boundary = kind == CharKind.Separator
-                || (prev != CharKind.Separator && kind != prev && !acronymJoin && !(prev == CharKind.Kanji && kind == CharKind.Hiragana && IsOkurigana(c)))
+                || (prev != CharKind.Separator && !okuriganaJoin && (kind != prev || okurigana > 0) && !acronymJoin)
                 || (kind == CharKind.Latin && i > 0 && char.IsUpper(cased[i]) && char.IsLower(cased[i - 1]));
+            okurigana = okuriganaJoin ? okurigana + 1 : 0;
             if (boundary && start >= 0)
             {
                 yield return (start, i - start);
@@ -168,20 +200,22 @@ public static partial class FileNameTokenizer
         if (start >= 0) yield return (start, text.Length - start);
     }
 
-    // 漢字に続く送り仮名（「見積り」「申し込み」）は同じ語として扱う
-    static bool IsOkurigana(char c) => "りしみきいけちえ".Contains(c);
+    static bool IsOkurigana(char c) => "りしみきいけちえわ".Contains(c);
 
-    enum CharKind { Separator, Latin, Digit, Kanji, Hiragana, Other }
+    enum CharKind { Separator, Latin, Digit, Kanji, Hiragana, Katakana, Other }
 
     static CharKind Kind(char c)
     {
         if (char.IsAsciiLetter(c)) return CharKind.Latin;
         if (char.IsDigit(c)) return CharKind.Digit;
         if (IsKanji(c)) return CharKind.Kanji;
-        if (c is >= 'ぁ' and <= 'ゟ' || c == 'ー') return CharKind.Hiragana;
+        if (IsHiragana(c)) return CharKind.Hiragana;
+        if (c is >= 'ァ' and <= 'ヿ' || c == 'ー') return CharKind.Katakana;
         if (char.IsLetter(c)) return CharKind.Other;
         return CharKind.Separator;
     }
+
+    static bool IsHiragana(char c) => c is >= 'ぁ' and <= 'ゟ';
 
     static bool IsKanji(char c) => c is >= '一' and <= '鿿' or >= '㐀' and <= '䶿' or '々';
 
