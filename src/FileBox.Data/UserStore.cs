@@ -8,6 +8,8 @@ public sealed record SavedSearch(long Id, string Name, string Query);
 public sealed record SaveHistoryRow(string Tokens, string? Ext, string FolderPath, string? RejectedPath, DateTime ChosenAt);
 public sealed record Bookmark(long Id, string Token, long VolumeSerial, byte[] FileId, string LastPath, string? Label);
 public sealed record InboxRule(long Id, string? NamePattern, string? Ext, string TargetPath, bool AutoMove, int Priority);
+public sealed record LearnedFolder(string FolderPath, int Count, DateTime LastChosen);
+public sealed record FrequentSearch(string Query, int Count, DateTime LastUsed);
 
 /// <summary>
 /// ユーザーごとのデータ（%LOCALAPPDATA%\FileBox\filebox.db）。03_データ設計 §3 の user.db。
@@ -45,6 +47,15 @@ public sealed class UserStore : IDisposable
           last_path TEXT NOT NULL, label TEXT, created_at TEXT NOT NULL);
         CREATE TABLE shell_backup (key_path TEXT NOT NULL, value_name TEXT NOT NULL, value TEXT, existed INTEGER NOT NULL,
           PRIMARY KEY (key_path, value_name));
+        """,
+        // 利用者目線の改善（2026-10-20）: タグ・星、提案から外すフォルダ、本文検索の対象、よく使う検索
+        """
+        CREATE TABLE tags (path TEXT NOT NULL COLLATE NOCASE, name TEXT NOT NULL, PRIMARY KEY (path, name));
+        CREATE INDEX ix_tags_name ON tags(name);
+        CREATE TABLE stars (path TEXT PRIMARY KEY COLLATE NOCASE, at TEXT NOT NULL);
+        CREATE TABLE suggest_excluded (path TEXT PRIMARY KEY COLLATE NOCASE);
+        CREATE TABLE content_roots (path TEXT PRIMARY KEY COLLATE NOCASE);
+        CREATE TABLE search_usage (query TEXT PRIMARY KEY, count INTEGER NOT NULL, last_used TEXT NOT NULL);
         """,
     };
 
@@ -130,7 +141,20 @@ public sealed class UserStore : IDisposable
         Exec("DELETE FROM search_history WHERE query=$q", null, ("$q", query));
         Exec("INSERT INTO search_history(query, at) VALUES ($q, $t)", null, ("$q", query), ("$t", DateTime.Now.ToString("o")));
         Exec("DELETE FROM search_history WHERE id NOT IN (SELECT id FROM search_history ORDER BY id DESC LIMIT 200)");
+        Exec("""
+             INSERT INTO search_usage(query, count, last_used) VALUES ($q, 1, $t)
+             ON CONFLICT(query) DO UPDATE SET count=count+1, last_used=excluded.last_used
+             """, null, ("$q", query), ("$t", DateTime.Now.ToString("o")));
     }
+
+    /// <summary>何度も使った検索（3 回以上、最近 90 日）。保存した検索の欄に「よく使う」として出す。</summary>
+    public List<FrequentSearch> GetFrequentSearches(int limit = 5) =>
+        Query("""
+              SELECT query, count, last_used FROM search_usage
+              WHERE count >= 3 AND last_used >= $since AND query NOT IN (SELECT query FROM saved_searches)
+              ORDER BY count DESC, last_used DESC LIMIT $n
+              """, r => new FrequentSearch(r.GetString(0), (int)r.GetInt64(1), DateTime.Parse(r.GetString(2))),
+            ("$since", DateTime.Now.AddDays(-90).ToString("o")), ("$n", limit));
 
     public List<string> GetSearchHistory(int limit = 20) =>
         Query("SELECT query FROM search_history ORDER BY id DESC LIMIT $n", r => r.GetString(0), ("$n", limit));
@@ -171,6 +195,87 @@ public sealed class UserStore : IDisposable
         Query("SELECT tokens, ext, folder_path, rejected_path, chosen_at FROM save_history ORDER BY id DESC LIMIT $n",
             r => new SaveHistoryRow(r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3),
                 DateTime.Parse(r.GetString(4))), ("$n", limit));
+
+    /// <summary>学習した保存先（選んだ回数の多い順）。設定の「学習した保存先を管理」用。</summary>
+    public List<LearnedFolder> GetLearnedFolders() =>
+        Query("SELECT folder_path, COUNT(*), MAX(chosen_at) FROM save_history GROUP BY folder_path COLLATE NOCASE ORDER BY COUNT(*) DESC, MAX(chosen_at) DESC",
+            r => new LearnedFolder(r.GetString(0), (int)r.GetInt64(1), DateTime.Parse(r.GetString(2))));
+
+    /// <summary>この保存先について覚えたことを忘れる（候補には引き続き出ることがある）。</summary>
+    public void ForgetLearnedFolder(string folderPath) =>
+        Exec("DELETE FROM save_history WHERE folder_path=$p COLLATE NOCASE", null, ("$p", folderPath));
+
+    public void ForgetAllLearned() => Exec("DELETE FROM save_history");
+
+    public List<string> GetSuggestExcluded() => Query("SELECT path FROM suggest_excluded ORDER BY path", r => r.GetString(0));
+
+    public void SetSuggestExcluded(string path, bool excluded) =>
+        Exec(excluded ? "INSERT INTO suggest_excluded(path) VALUES ($p) ON CONFLICT DO NOTHING" : "DELETE FROM suggest_excluded WHERE path=$p", null, ("$p", path));
+
+    // ---------------------------------------------------------------- タグ・星（FileBox の中だけの印。Windows 側のファイルは変えない）
+
+    public List<string> GetTagNames() => Query("SELECT DISTINCT name FROM tags ORDER BY name", r => r.GetString(0));
+
+    public List<string> GetTags(string path) => Query("SELECT name FROM tags WHERE path=$p ORDER BY name", r => r.GetString(0), ("$p", path));
+
+    public List<string> GetTaggedPaths(string name) => Query("SELECT path FROM tags WHERE name=$n ORDER BY path", r => r.GetString(0), ("$n", name));
+
+    /// <summary>印の付いたパスと、そのタグ（一覧の表示用にまとめて読む）。</summary>
+    public Dictionary<string, List<string>> GetAllTags()
+    {
+        var map = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (path, name) in Query("SELECT path, name FROM tags ORDER BY name", r => (r.GetString(0), r.GetString(1))))
+        {
+            if (!map.TryGetValue(path, out var list)) map[path] = list = new();
+            list.Add(name);
+        }
+        return map;
+    }
+
+    public void AddTag(string path, string name) =>
+        Exec("INSERT INTO tags(path, name) VALUES ($p, $n) ON CONFLICT DO NOTHING", null, ("$p", path), ("$n", name.Trim()));
+
+    public void RemoveTag(string path, string name) => Exec("DELETE FROM tags WHERE path=$p AND name=$n", null, ("$p", path), ("$n", name));
+
+    public void DeleteTagName(string name) => Exec("DELETE FROM tags WHERE name=$n", null, ("$n", name));
+
+    public HashSet<string> GetStars() => Query("SELECT path FROM stars", r => r.GetString(0)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    public void SetStar(string path, bool on) =>
+        Exec(on ? "INSERT INTO stars(path, at) VALUES ($p, $t) ON CONFLICT DO NOTHING" : "DELETE FROM stars WHERE path=$p", null,
+            ("$p", path), ("$t", DateTime.Now.ToString("o")));
+
+    /// <summary>
+    /// FileBox で名前を変えた・移動したときに、タグ・星・お気に入り・最近使った項目のパスを付け替える（フォルダなら配下も）。
+    /// </summary>
+    public void RenamePath(string oldPath, string newPath)
+    {
+        oldPath = oldPath.TrimEnd('\\');
+        newPath = newPath.TrimEnd('\\');
+        lock (_gate)
+        {
+            using var tx = _db.BeginTransaction();
+            foreach (var table in new[] { "tags", "stars", "favorites", "recent_items" })
+            {
+                Exec($"""
+                      UPDATE OR IGNORE {table} SET path = $new || substr(path, length($old) + 1)
+                      WHERE path = $old COLLATE NOCASE OR substr(path, 1, length($old) + 1) = $old || '\' COLLATE NOCASE
+                      """, tx, ("$old", oldPath), ("$new", newPath));
+            }
+            tx.Commit();
+        }
+    }
+
+    // ---------------------------------------------------------------- 本文検索の対象（既定では無し＝オフ）
+
+    public List<string> GetContentRoots() => Query("SELECT path FROM content_roots ORDER BY path", r => r.GetString(0));
+
+    public void SetContentRoot(string path, bool on) =>
+        Exec(on ? "INSERT INTO content_roots(path) VALUES ($p) ON CONFLICT DO NOTHING" : "DELETE FROM content_roots WHERE path=$p", null, ("$p", path));
+
+    // ---------------------------------------------------------------- 書き出し・取り込み用
+
+    public List<(string Key, string Value)> GetAllSettings() => Query("SELECT key, value FROM settings ORDER BY key", r => (r.GetString(0), r.GetString(1)));
 
     // ---------------------------------------------------------------- 受け取りボックス（§1.6）
 

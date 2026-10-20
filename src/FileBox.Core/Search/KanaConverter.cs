@@ -107,6 +107,33 @@ public static class KanaConverter
         return set.ToList();
     }
 
+    /// <summary>
+    /// 通常の検索（部分一致）で一緒に探す表記: 全角半角・ひらがなとカタカナの違いを吸収し、
+    /// 英字だけの 3 文字以上の語は、すべてかなに直せるときに限りローマ字読みも足す（「syorui」で「書類」は無理でも「しょるい」「ショルイ」は見つかる）。
+    /// </summary>
+    public static IReadOnlyList<string> SearchVariants(string input)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { input };
+        string normalized = input.Normalize(NormalizationForm.FormKC);
+        set.Add(normalized);
+        if (normalized.Any(ch => ch is >= 'ぁ' and <= 'ゖ' or >= 'ァ' and <= 'ヶ'))
+        {
+            set.Add(KatakanaToHiragana(normalized));
+            set.Add(HiraganaToKatakana(normalized));
+        }
+        if (normalized.Length >= 3 && normalized.All(ch => ch is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '-'))
+        {
+            string hira = RomajiToHiragana(normalized);
+            if (!hira.Any(ch => ch is >= 'a' and <= 'z'))
+            {
+                set.Add(hira);
+                set.Add(HiraganaToKatakana(hira));
+            }
+        }
+        set.Remove("");
+        return set.ToList();
+    }
+
     static bool IsConsonant(char c) => c is >= 'a' and <= 'z' && "aiueo".IndexOf(c) < 0;
 
     static Dictionary<string, string> BuildTable()

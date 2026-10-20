@@ -227,20 +227,7 @@ public sealed class InboxService
         }
     }
 
-    public static bool Matches(InboxRule rule, string fileName)
-    {
-        if (rule.Ext is { Length: > 0 } ext)
-        {
-            var exts = ext.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(e => "." + e.TrimStart('.'));
-            if (!exts.Any(e => fileName.EndsWith(e, StringComparison.OrdinalIgnoreCase))) return false;
-        }
-        if (rule.NamePattern is { Length: > 0 } pattern)
-        {
-            string regex = "^" + Regex.Escape(pattern).Replace("\\*", ".*").Replace("\\?", ".") + "$";
-            if (!Regex.IsMatch(fileName, regex, RegexOptions.IgnoreCase)) return false;
-        }
-        return rule.Ext is { Length: > 0 } || rule.NamePattern is { Length: > 0 };
-    }
+    public static bool Matches(InboxRule rule, string fileName) => Core.Files.NameRule.Matches(rule.NamePattern, rule.Ext, fileName);
 
     // ================================================================ 操作
 
@@ -250,24 +237,20 @@ public sealed class InboxService
         var moved = await Views.SuggestMoveDialog.MoveAndLearnAsync(new[] { item.FullPath }, target, shown);
         if (moved != null) Remove(item.FullPath);
         if (auto && moved != null) App.Window?.ShowInfo($"ルールにより「{item.Name}」を移動しました", Microsoft.UI.Xaml.Controls.InfoBarSeverity.Success,
-            "元に戻す", async () => { if (FileMover.LastOperation is { } op) await FileMover.UndoAsync(op); });
+            "元に戻す (Ctrl+Z)", () => _ = FileOperations.Instance.UndoAsync());
     }
 
-    /// <summary>確信度「高」（ルール一致を含む）の項目をまとめて推奨先へ移動する。</summary>
-    public async Task<(int Count, List<MoveOperation> Operations)> MoveAllConfidentAsync()
+    /// <summary>確信度「高」（ルール一致を含む）の項目をまとめて推奨先へ移動する。移動先ごとに 1 回の操作として記録される。</summary>
+    public async Task<int> MoveAllConfidentAsync()
     {
-        var ops = new List<MoveOperation>();
         var targets = Items.Where(i => i.TargetPath != null && i.Confidence == Confidence.High && !i.TargetIsNew).ToList();
         var byTarget = targets.GroupBy(i => i.TargetPath!, StringComparer.OrdinalIgnoreCase);
         int count = 0;
         foreach (var group in byTarget)
         {
             var sources = group.Select(i => i.FullPath).ToList();
-            if (!await Guard.TransferAsync(sources, group.Key, move: true, "move")) continue;
-            var (op, _) = await FileMover.MoveAsync(sources, group.Key);
-            Guard.Transferred(op.Moves.Select(m => m.From).ToList(), group.Key, move: true, "move");
-            if (op.Moves.Count > 0) ops.Add(op);
-            foreach (var (from, _) in op.Moves)
+            var (op, _) = await FileOperations.Instance.MoveQuietAsync(sources, group.Key);
+            foreach (var (from, _) in op?.Items ?? Array.Empty<(string, string)>())
             {
                 var item = group.First(i => string.Equals(i.FullPath, from, StringComparison.OrdinalIgnoreCase));
                 SuggestionService.Instance.Record(item.Name, group.Key, item.Suggestion);
@@ -275,7 +258,7 @@ public sealed class InboxService
                 count++;
             }
         }
-        return (count, ops);
+        return count;
     }
 
     public void Dismiss(InboxItem item)
@@ -295,6 +278,7 @@ public sealed class InboxService
     }
 
     public List<InboxRule> GetRules() => _store.GetInboxRules();
+    public void AddRule(string? namePattern, string? ext, string target, bool autoMove) => _store.AddInboxRule(namePattern, ext, target, autoMove);
     public void DeleteRule(long id) => _store.DeleteInboxRule(id);
     public void SetRuleAutoMove(long id, bool on) => _store.SetInboxRuleAutoMove(id, on);
 

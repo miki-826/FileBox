@@ -131,10 +131,41 @@
                             AutomationProperties.Name="ファイルとフォルダを検索"
                             PlaceholderText="PC 全体を検索（Ctrl+F）"
                             QueryIcon="Find"
+                            UpdateTextOnSelect="False"
                             TextChanged="SearchBox_TextChanged"
                             QuerySubmitted="SearchBox_QuerySubmitted"
-                            SuggestionChosen="SearchBox_SuggestionChosen"
-                            GotFocus="SearchBox_GotFocus" />
+                            GotFocus="SearchBox_GotFocus"
+                            LostFocus="SearchBox_LostFocus"
+                            MaxSuggestionListHeight="300"
+                            ToolTipService.ToolTip="入力すると候補を表示。↑↓で選択、Enterで確定、Escで閉じます。">
+                <AutoSuggestBox.ItemContainerStyle>
+                    <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="10,2" />
+                        <Setter Property="MinHeight" Value="44" />
+                    </Style>
+                </AutoSuggestBox.ItemContainerStyle>
+                <AutoSuggestBox.ItemTemplate>
+                    <DataTemplate x:DataType="models:SearchSuggestionItem">
+                        <StackPanel Spacing="4" Padding="0,4" HorizontalAlignment="Stretch">
+                            <TextBlock Text="{x:Bind Group}" Visibility="{x:Bind views:Converters.VisibleIf(Group)}"
+                                       FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Grid ColumnDefinitions="34,*" ColumnSpacing="8" MinHeight="38">
+                                <views:FileItemIcon ItemPath="{x:Bind ItemPath}" IsDirectory="{x:Bind IsDirectory}" Extension="{x:Bind Extension}"
+                                                    Visibility="{x:Bind views:Converters.Visible(IsLocation)}" />
+                                <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" Visibility="{x:Bind views:Converters.Collapsed(IsLocation)}"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{x:Bind Title}" Tag="data" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Title}" />
+                                    <TextBlock Text="{x:Bind Detail}" Tag="data" FontSize="11" TextTrimming="CharacterEllipsis"
+                                               Visibility="{x:Bind views:Converters.VisibleIf(Detail)}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               ToolTipService.ToolTip="{x:Bind Detail}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </DataTemplate>
+                </AutoSuggestBox.ItemTemplate>
+            </AutoSuggestBox>
 
             <Button Grid.Column="4" MinHeight="40" Padding="10,6" AutomationProperties.Name="検索条件を設定" ToolTipService.ToolTip="種類・一致方法・更新日・検索範囲を設定">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -238,6 +269,13 @@
                     </Grid>
                     <ListView x:Name="RecentList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
 
+                    <!-- 星・タグ（FileBox の中だけの印）。印を付けたものがあるときだけ表示 -->
+                    <Grid x:Name="TagHeader" Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource SidebarHeader}" Text="星・タグ" />
+                        <Button x:Name="TagToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
+                    </Grid>
+                    <ListView x:Name="TagList" Style="{StaticResource SidebarList}" ItemClick="Sidebar_ItemClick" RightTapped="Sidebar_RightTapped" />
+
                     <Grid Style="{StaticResource SidebarSection}" ColumnDefinitions="*,Auto">
                         <TextBlock Style="{StaticResource SidebarHeader}" Text="ドライブと場所" />
                         <Button x:Name="DriveToggle" Grid.Column="1" Style="{StaticResource SidebarHeaderButton}" />
@@ -290,13 +328,19 @@
                             <TextBlock Text="ユーザーと権限" FontSize="14" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <Button Style="{StaticResource SidebarFooterButton}" Click="Settings_Click"
-                            AutomationProperties.Name="エクスプローラー置き換え・リンク・表示" ToolTipService.ToolTip="エクスプローラー置き換え・リンク・表示">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE713;" FontSize="18" Foreground="#5B6B7F" />
-                            <TextBlock Text="設定" FontSize="14" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="2">
+                        <Button x:Name="SettingsButton" Style="{StaticResource SidebarFooterButton}" Click="Settings_Click"
+                                AutomationProperties.Name="エクスプローラー置き換え・表示・言語・データ" ToolTipService.ToolTip="エクスプローラー置き換え・表示・言語・データ">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE713;" FontSize="18" Foreground="#5B6B7F" />
+                                <TextBlock Text="設定" FontSize="14" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="1" Style="{StaticResource SidebarFooterButton}" Click="Help_Click" MinWidth="42"
+                                AutomationProperties.Name="ヘルプ（ショートカット一覧・使い方の案内）" ToolTipService.ToolTip="ヘルプ（ショートカット一覧・使い方の案内）(F1)">
+                            <FontIcon Glyph="&#xE897;" FontSize="18" Foreground="#5B6B7F" />
+                        </Button>
+                    </Grid>
             </StackPanel>
             </Grid>
 

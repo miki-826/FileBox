@@ -41,9 +41,10 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         catch (Exception) { }
 
         _searchTimer = DispatcherQueue.CreateTimer();
-        _searchTimer.Interval = TimeSpan.FromMilliseconds(150);
+        _searchTimer.Interval = TimeSpan.FromMilliseconds(200);
         _searchTimer.IsRepeating = false;
-        _searchTimer.Tick += (_, _) => RunSearchInCurrentTab(SearchBox.Text);
+        _searchTimer.Tick += async (_, _) => await RefreshSearchSuggestionsAsync();
+        SearchBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(SearchBox_KeyDown), true);
 
         _statusTimer = DispatcherQueue.CreateTimer();
         _statusTimer.Interval = TimeSpan.FromSeconds(2);
@@ -52,6 +53,9 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
         FolderPaneViewModel.ShowHidden = _store.GetSetting("showHidden") == "1";
         ViewPreferences.Initialize(_store);
+        UserMarks.Initialize(_store);
+        FileOperations.Initialize(_store);
+        KeyBindings.Initialize(_store);
         ViewPreferences.ColorsChanged += OnFolderColorsChanged;
         FolderPaneViewModel.Visited += OnFolderVisited;
         SuggestionService.Initialize(_store);
@@ -59,12 +63,19 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         InboxService.Instance.CountChanged += UpdateInboxEntry;
         InitializeLinks();
         SettingsDialog.Store = _store;
+        if (ConversionContextMenu.Enabled(_store))
+        {
+            try { ConversionContextMenu.Apply(_store, true); }
+            catch (Exception ex) { ShowInfo(ex.Message, InfoBarSeverity.Warning); }
+        }
         InitializePolicy();
         SaveDialogWatcher.Initialize(_store, DispatcherQueue);
         RegisterAccelerators();
         InitializeSections();
         LoadSidebar();
         RestoreSession();
+        InitializeExtras();
+        Text.Start(this);
         Closed += OnClosed;
         _ = RefreshIndexStatusAsync();
     }
@@ -99,6 +110,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             if (e.PropertyName is nameof(TabViewModel.ActivePane) or nameof(TabViewModel.Title)) item.IconSource = TabIcon(model.ActivePane);
             if (e.PropertyName == nameof(TabViewModel.ActivePane) && ReferenceEquals(CurrentTab, entry)) OnActivePaneChanged();
         };
+        EnableTabDrop(entry);
         if (index is int i && i <= Tabs.TabItems.Count) Tabs.TabItems.Insert(i, item);
         else Tabs.TabItems.Add(item);
         if (select) Tabs.SelectedItem = item;
@@ -125,6 +137,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
     void CloseTab(TabEntry entry)
     {
+        RememberClosed(entry);
         entry.Host.Detach();
         entry.Model.Dispose();
         _tabs.Remove(entry);
@@ -266,7 +279,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         StatusText.Text = active switch
         {
             SearchPaneViewModel s => s.Summary,
-            _ when _statusSource != null => $"{_statusSource.StatusText}    {(_statusSource.IsPc ? "PC" : _statusSource.CurrentPath)}",
+            // 件数の文とパスは別々に訳す（パスまで含めると対応表の文と一致しないため）
+            _ when _statusSource != null => $"{Text.T(_statusSource.StatusText)}    {(_statusSource.IsPc ? "PC" : _statusSource.CurrentPath)}",
             _ => "",
         };
     }
@@ -330,8 +344,9 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         }
         // 現在の選択をすぐ表示
         var view = tab.Host.ViewFor(from);
-        var list = (view as FrameworkElement)?.FindName("List") as ListView;
-        if (list?.SelectedItems.Count == 1 && list.SelectedItem is FileItem item) preview.Item = item;
+        var list = (view as FrameworkElement)?.FindName("List") as ListViewBase;
+        if (view is FolderPaneView folderView) { if (folderView.SingleSelection is { } selected) preview.Item = selected; }
+        else if (list?.SelectedItems.Count == 1 && list.SelectedItem is FileItem item) preview.Item = item;
         tab.Model.ActivePane = from;
         (view as FolderPaneView)?.FocusList();
     }
@@ -368,6 +383,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
     /// <summary>コマンドライン引数・2つ目の起動から渡されたパスを開く。</summary>
     public void OpenFromArguments(IEnumerable<string> args)
     {
+        var arguments = args.ToList();
+        if (arguments.Contains("--tools")) { QueueTools(arguments.SkipWhile(a => a != "--tools").Skip(1)); return; }
         foreach (var arg in args)
         {
             if (arg == "--inbox") { OpenInbox(); continue; }
@@ -391,7 +408,10 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
     void SearchBox_GotFocus(object sender, RoutedEventArgs e)
     {
-        if (SearchBox.Text.Length == 0) SearchBox.ItemsSource = _store.GetSearchHistory(10);
+        _searchFocused = true;
+        _suggestionsDismissed = false;
+        ShowSearchSuggestions(SearchBox.Text);
+        if (!string.IsNullOrWhiteSpace(SearchBox.Text)) { _searchTimer.Stop(); _searchTimer.Start(); }
     }
 
     void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
@@ -399,19 +419,28 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         SyncChipsFromQuery();
         UpdateAddressBar();
         if (args.Reason == AutoSuggestionBoxTextChangeReason.SuggestionChosen) return;
-        sender.ItemsSource = sender.Text.Length == 0 ? _store.GetSearchHistory(10) : null;
         _searchTimer.Stop();
-        _searchTimer.Start();
-    }
-
-    void SearchBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
-    {
-        sender.Text = args.SelectedItem as string ?? "";
+        _suggestionsCts?.Cancel();
+        _suggestionsDismissed = false;
+        ShowSearchSuggestions(sender.Text);
+        if (_searchFocused && !string.IsNullOrWhiteSpace(sender.Text)) _searchTimer.Start();
     }
 
     void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        string query = args.ChosenSuggestion as string ?? args.QueryText;
+        if (args.ChosenSuggestion is SearchSuggestionItem candidate)
+        {
+            if (ChooseSearchLocation(candidate)) return;
+            if (candidate.Suggestion.Kind == SearchSuggestionKind.Filter)
+            {
+                sender.Text = candidate.Suggestion.Query;
+                sender.Focus(FocusState.Programmatic);
+                return;
+            }
+        }
+        string query = args.ChosenSuggestion is SearchSuggestionItem selected ? selected.Suggestion.Query : args.QueryText;
+        sender.Text = query;
+        CancelSearchSuggestions();
         if (string.IsNullOrWhiteSpace(query)) return;
         _store.AddSearchHistory(query);
         // Enter: 検索結果を新しいタブで開く（02_機能設計 §3 / 04_画面設計 S02）
@@ -421,7 +450,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         _searchTimer.Stop();
     }
 
-    /// <summary>入力中は現在のタブに検索結果区画を出す（なければ右側に分割して追加）。</summary>
+    /// <summary>条件チップなどで検索を変更したとき、現在タブの結果区画を更新する。</summary>
     void RunSearchInCurrentTab(string query)
     {
         var tab = CurrentTab;
@@ -450,7 +479,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
     void SetQuery(string query)
     {
         SearchBox.Text = query;
-        _searchTimer.Stop();
+        CancelSearchSuggestions();
         RunSearchInCurrentTab(query);
     }
 
@@ -621,6 +650,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             .ToList();
         SavedSearchList.ItemsSource = _store.GetSavedSearches()
             .Select(s => new SidebarItem { Name = s.Name, Glyph = "\uE721", Id = s.Id, Query = s.Query, Kind = SidebarKind.SavedSearch, Color = "#0090FF" })
+            .Concat(FrequentSearchItems())
             .ToList();
         _ = LoadRecentAsync();
     }
@@ -639,9 +669,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             case SidebarKind.Zone:
                 OpenCapacity(item.Path);
                 break;
-            case SidebarKind.SavedSearch:
-                SearchBox.Text = item.Query ?? "";
-                AddTab(new TabViewModel(new SearchPaneViewModel(item.Query ?? "")));
+            case SidebarKind.SavedSearch or SidebarKind.FrequentSearch or SidebarKind.Tag:
+                OpenSearch(item.Query ?? "");
                 break;
             case SidebarKind.Shell:
                 OpenShellPane(item.Path);
@@ -679,6 +708,18 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
                 break;
             case SidebarKind.SavedSearch:
                 Add("削除", "\uE74D", () => { _store.DeleteSavedSearch(item.Id); LoadSidebar(); });
+                break;
+            case SidebarKind.FrequentSearch:
+                Add("検索を保存…", "\uE74E", async () =>
+                {
+                    if (await Dialogs.PromptAsync(Content.XamlRoot, "検索を保存", item.Query ?? "", "保存") is { } name) { _store.SaveSearch(name, item.Query ?? ""); LoadSidebar(); }
+                });
+                break;
+            case SidebarKind.Tag when item.Query != "is:starred":
+                Add("このタグを削除（付けた印をすべて外す）", "\uE74D", () => UserMarks.DeleteTag(item.Name));
+                break;
+            case SidebarKind.Tag:
+                Add("すべての星を外す", "\uE74D", () => UserMarks.SetStar(UserMarks.StarredPaths(), false));
                 break;
             case SidebarKind.Shell:
                 Add("開く", "\uE8AD", () => OpenShellPane(item.Path));
@@ -763,7 +804,10 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
     void OnClosed(object sender, WindowEventArgs args)
     {
+        CancelSearchSuggestions();
         _linkServer?.Dispose();
+        GlobalHotkey.Instance.Dispose();
+        ContentIndexer.Instance.Dispose();
         SaveDialogWatcher.Instance.Dispose();
         ExplorerIntegration.Instance.Dispose();
         try { _store.SaveWorkspace(UserStore.SessionWorkspace, SerializeLayout()); }
@@ -814,10 +858,39 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
 
     void RegisterAccelerators()
     {
-        void Add(VirtualKey key, VirtualKeyModifiers mods, Action action)
+        var actions = new Dictionary<string, Action>
+        {
+            ["newTab"] = () => OpenInNewTab(ActiveFolder?.CurrentPath ?? ""),
+            ["closePane"] = () => { if (CurrentTab is { } t) ClosePane(t.Model.ActivePane); },
+            ["reopenTab"] = ReopenClosedTab,
+            ["nextTab"] = () => CycleTab(1),
+            ["prevTab"] = () => CycleTab(-1),
+            ["search"] = FocusSearch,
+            ["search2"] = FocusSearch,
+            ["address"] = EditAddress,
+            ["address2"] = EditAddress,
+            ["back"] = () => _ = ActiveFolder?.GoBackAsync(),
+            ["forward"] = () => _ = ActiveFolder?.GoForwardAsync(),
+            ["up"] = () => _ = ActiveFolder?.GoUpAsync(),
+            ["refresh"] = () => _ = ActiveFolder?.RefreshAsync(),
+            ["undo"] = () => _ = FileOperations.Instance.UndoAsync(),
+            ["redo"] = () => _ = FileOperations.Instance.RedoAsync(),
+            ["hidden"] = ToggleHidden,
+            ["zoomIn"] = () => ViewPreferences.SetZoom(ViewPreferences.Zoom + 1),
+            ["zoomOut"] = () => ViewPreferences.SetZoom(ViewPreferences.Zoom - 1),
+            ["help"] = () => _ = ShortcutsDialog.ShowAsync(Content.XamlRoot),
+        };
+        // 入力欄の中では、文字の元に戻す・やり直す（Ctrl+Z / Ctrl+Y）を優先する
+        var textKeys = new HashSet<string> { "undo", "redo" };
+        void Add(VirtualKey key, VirtualKeyModifiers mods, Action action, bool notInText = false)
         {
             var acc = new KeyboardAccelerator { Key = key, Modifiers = mods };
-            acc.Invoked += (_, e) => { action(); e.Handled = true; };
+            acc.Invoked += (_, e) =>
+            {
+                if (notInText && IsTyping()) return;
+                action();
+                e.Handled = true;
+            };
             Root.KeyboardAccelerators.Add(acc);
         }
         Root.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
@@ -828,18 +901,20 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             SplitPane(t.Model.ActivePane, IsDown(VirtualKey.Shift) ? Orientation.Vertical : Orientation.Horizontal);
             e.Handled = true;
         };
-        Add(VirtualKey.T, VirtualKeyModifiers.Control, () => OpenInNewTab(ActiveFolder?.CurrentPath ?? ""));
-        Add(VirtualKey.W, VirtualKeyModifiers.Control, () => { if (CurrentTab is { } t) ClosePane(t.Model.ActivePane); });
-        Add(VirtualKey.F, VirtualKeyModifiers.Control, FocusSearch);
-        Add(VirtualKey.E, VirtualKeyModifiers.Control, FocusSearch);
-        Add(VirtualKey.L, VirtualKeyModifiers.Control, EditAddress);
-        Add(VirtualKey.D, VirtualKeyModifiers.Menu, EditAddress);
-        Add(VirtualKey.Left, VirtualKeyModifiers.Menu, () => _ = ActiveFolder?.GoBackAsync());
-        Add(VirtualKey.Right, VirtualKeyModifiers.Menu, () => _ = ActiveFolder?.GoForwardAsync());
-        Add(VirtualKey.Up, VirtualKeyModifiers.Menu, () => _ = ActiveFolder?.GoUpAsync());
-        Add(VirtualKey.F5, VirtualKeyModifiers.None, () => _ = ActiveFolder?.RefreshAsync());
-        Add(VirtualKey.H, VirtualKeyModifiers.Control, ToggleHidden);
+        foreach (var binding in KeyBindings.Current)
+            if (actions.TryGetValue(binding.Id, out var action)) Add(binding.Key, binding.Modifiers, action, textKeys.Contains(binding.Id));
+        for (int n = 0; n < 9; n++)
+        {
+            int index = n;
+            Add(VirtualKey.Number1 + n, VirtualKeyModifiers.Control, () => SelectTab(index));
+        }
+        // テンキーでない「+」「-」（VK_OEM_PLUS / VK_OEM_MINUS）でも大きさを変える
+        Add((VirtualKey)187, VirtualKeyModifiers.Control, actions["zoomIn"]);
+        Add((VirtualKey)189, VirtualKeyModifiers.Control, actions["zoomOut"]);
     }
+
+    /// <summary>文字を入力する場所にフォーカスがあるか。</summary>
+    bool IsTyping() => FocusManager.GetFocusedElement(Content.XamlRoot) is TextBox or AutoSuggestBox or PasswordBox or RichEditBox;
 
     static bool IsDown(VirtualKey key) =>
         Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
@@ -862,7 +937,7 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         foreach (var f in _tabs.SelectMany(t => t.Model.Panes).OfType<FolderPaneViewModel>()) _ = f.RefreshAsync();
     }
 
-    void ToggleHidden()
+    public void ToggleHidden()
     {
         FolderPaneViewModel.ShowHidden = !FolderPaneViewModel.ShowHidden;
         _store.SetSetting("showHidden", FolderPaneViewModel.ShowHidden ? "1" : "0");

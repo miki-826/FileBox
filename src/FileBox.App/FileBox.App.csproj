@@ -27,7 +27,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\FileBox.ico;Assets\FileBox.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\FileBox.ico;Assets\FileBox.png;Assets\Strings\en.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\FileBox.Tools\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,12 +36,12 @@
     <ProjectReference Include="..\FileBox.Core\FileBox.Core.csproj" />
     <ProjectReference Include="..\FileBox.Data\FileBox.Data.csproj" />
     <ProjectReference Include="..\FileBox.Indexer\FileBox.Indexer.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\FileBox.Tools\FileBox.Tools.csproj" />
   </ItemGroup>
 
   <!-- Indexer を App の出力フォルダへ同梱する（App が自動起動する） -->
   <Target Name="CopyIndexer" AfterTargets="Build">
-    <MSBuild Projects="..\FileBox.Indexer\FileBox.Indexer.csproj" Targets="GetTargetPath"
-             Properties="Configuration=$(Configuration);Platform=$(Platform)">
+    <MSBuild Projects="..\FileBox.Indexer\FileBox.Indexer.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration);Platform=$(Platform)">
       <Output TaskParameter="TargetOutputs" ItemName="IndexerTargetPath" />
     </MSBuild>
     <PropertyGroup>

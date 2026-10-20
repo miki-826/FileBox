@@ -21,7 +21,16 @@ public sealed class SearchQuery
     public DateTime? ModifiedFrom { get; set; }
     public DateTime? ModifiedTo { get; set; }
     public string? InPath { get; set; }
+    /// <summary>tag:名前（FileBox のタグ）。</summary>
+    public List<string> Tags { get; } = new();
+    /// <summary>is:starred（星付き）。</summary>
+    public bool Starred { get; set; }
+    /// <summary>content:語（本文検索）。</summary>
+    public List<string> ContentTerms { get; } = new();
     public List<string> Errors { get; } = new();
+
+    /// <summary>索引ではなく、FileBox の印（タグ・星）や本文の索引から探すか。</summary>
+    public bool UsesLocalSources => Tags.Count > 0 || Starred || ContentTerms.Count > 0;
 
     public bool HasTerms => Groups.Any(g => g.Count > 0);
 

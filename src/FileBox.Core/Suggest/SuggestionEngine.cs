@@ -61,6 +61,9 @@ public sealed partial class SuggestionEngine
     /// <summary>保存場所として自然な場所（ドキュメント・デスクトップ・データ用ドライブなど）。配下の候補を少し優遇する。</summary>
     public IReadOnlyList<string> PreferredRoots { get; set; } = Array.Empty<string>();
 
+    /// <summary>利用者が「候補に出さない」と決めたフォルダ（配下も含めて外す）。</summary>
+    public IReadOnlyList<string> ExcludedFolders { get; set; } = Array.Empty<string>();
+
     public SuggestionEngine(IFolderSource source, Func<IReadOnlyList<SaveRecord>> history, SuggestionWeights? weights = null, Func<DateTime>? clock = null)
     {
         _source = source;
@@ -114,7 +117,7 @@ public sealed partial class SuggestionEngine
                                                    || (k.StartsWith(cur + "\\", StringComparison.OrdinalIgnoreCase) && !IsNamedSubfolder(name, k, stem))).ToList())
                 byPath.Remove(key);
         }
-        foreach (var key in byPath.Keys.Where(IsExcluded).ToList()) byPath.Remove(key);
+        foreach (var key in byPath.Keys.Where(k => IsExcluded(k) || ExcludedFolders.Any(x => IsSameOrUnder(k, x))).ToList()) byPath.Remove(key);
         ct.ThrowIfCancellationRequested();
 
         // ---- スコアリング

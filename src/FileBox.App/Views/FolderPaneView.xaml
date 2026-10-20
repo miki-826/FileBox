@@ -30,6 +30,13 @@
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="CornerRadius" Value="4" />
         </Style>
+        <Style x:Key="TileItem" TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
         <Style x:Key="NavToggle" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="8,6" />
@@ -37,6 +44,37 @@
             <Setter Property="MinHeight" Value="40" />
             <Setter Property="CornerRadius" Value="6" />
         </Style>
+
+        <!-- 大アイコン: 縮小画像（取れなければ種類のアイコン）と名前 -->
+        <DataTemplate x:Key="IconTemplate" x:DataType="models:FileItem">
+            <Grid RowDefinitions="*,Auto" Opacity="{x:Bind ItemOpacity}" ToolTipService.ToolTip="{x:Bind Name}">
+                <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}"
+                                    ShowThumbnail="True" IconSize="64" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <FontIcon Glyph="&#xE735;" FontSize="12" Foreground="#E2A300" Visibility="{x:Bind views:Converters.Visible(IsStarred), Mode=OneWay}" />
+                    <FontIcon Glyph="{x:Bind CloudGlyph, Mode=OneWay}" FontSize="12" Foreground="{x:Bind views:Converters.HexBrush(CloudColor), Mode=OneWay}"
+                              ToolTipService.ToolTip="{x:Bind CloudTip, Mode=OneWay}" />
+                </StackPanel>
+                <TextBlock Grid.Row="1" Tag="data" Text="{x:Bind Name}" TextAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" FontSize="12" Margin="0,4,0,0" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 並べて表示: アイコンの右に名前・種類・サイズ -->
+        <DataTemplate x:Key="TileTemplate" x:DataType="models:FileItem">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Opacity="{x:Bind ItemOpacity}" ToolTipService.ToolTip="{x:Bind Name}">
+                <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}"
+                                    ShowThumbnail="True" IconSize="48" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Tag="data" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxWidth="180" />
+                        <FontIcon Glyph="&#xE735;" FontSize="11" Foreground="#E2A300" Visibility="{x:Bind views:Converters.Visible(IsStarred), Mode=OneWay}" />
+                        <FontIcon Glyph="{x:Bind CloudGlyph, Mode=OneWay}" FontSize="11" Foreground="{x:Bind views:Converters.HexBrush(CloudColor), Mode=OneWay}" />
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind TypeText}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{x:Bind SizeText, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
     </UserControl.Resources>
 
     <Grid RowDefinitions="Auto,Auto,Auto,*">
@@ -77,22 +115,56 @@
             <AppBarButton x:Name="CutButton" Label="切り取り" Icon="Cut" Click="Cut_Click" ToolTipService.ToolTip="切り取り (Ctrl+X)" />
             <AppBarButton x:Name="CopyButton" Label="コピー" Icon="Copy" Click="Copy_Click" ToolTipService.ToolTip="コピー (Ctrl+C)" />
             <AppBarButton x:Name="PasteButton" Label="貼り付け" Icon="Paste" Click="Paste_Click" ToolTipService.ToolTip="貼り付け (Ctrl+V)" />
-            <AppBarButton x:Name="RenameButton" Label="名前の変更" Icon="Rename" Click="Rename_Click" ToolTipService.ToolTip="名前の変更 (F2)" />
+            <AppBarButton x:Name="RenameButton" Label="名前の変更" Icon="Rename" Click="Rename_Click" ToolTipService.ToolTip="名前の変更 (F2)。複数選ぶと一括で変更" />
             <AppBarButton x:Name="DeleteButton" Label="削除" Icon="Delete" Click="Delete_Click" ToolTipService.ToolTip="ごみ箱へ移動 (Delete)" />
+            <AppBarButton x:Name="UndoButton" Label="元に戻す" Icon="Undo" Click="Undo_Click" ToolTipService.ToolTip="元に戻す (Ctrl+Z)" />
             <AppBarSeparator />
+            <AppBarButton x:Name="ViewButton" Label="表示" ToolTipService.ToolTip="表示のしかた・大きさ (Ctrl+ホイール)">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE8FD;" />
+                </AppBarButton.Icon>
+                <AppBarButton.Flyout>
+                    <MenuFlyout x:Name="ViewMenu" Opening="ViewMenu_Opening">
+                        <RadioMenuFlyoutItem x:Name="DetailsItem" Text="詳細" GroupName="mode" Tag="Details" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FD;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem x:Name="IconsItem" Text="大アイコン" GroupName="mode" Tag="Icons" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE91B;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem x:Name="TilesItem" Text="並べて表示" GroupName="mode" Tag="Tiles" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xECA5;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="大きく (Ctrl+ホイール上)" Click="ZoomIn_Click">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A3;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="小さく (Ctrl+ホイール下)" Click="ZoomOut_Click">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71F;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <ToggleMenuFlyoutItem x:Name="CheckBoxItem" Text="チェックボックスで選択" Click="CheckBoxes_Click" />
+                        <ToggleMenuFlyoutItem x:Name="HiddenItem" Text="隠しファイルを表示 (Ctrl+H)" Click="Hidden_Click" />
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
             <AppBarToggleButton x:Name="GroupButton" Label="日付でまとめる" Icon="Calendar" Click="Group_Click" />
             <AppBarButton x:Name="OrganizeButton" Label="整理の提案" Icon="MoveToFolder" Click="Organize_Click" Visibility="Collapsed" ToolTipService.ToolTip="ダウンロードのファイルに保存先を提案" />
             <AppBarButton Label="プレビュー" Icon="Preview" Click="Preview_Click" ToolTipService.ToolTip="プレビューと詳細 (Space)" />
+            <AppBarButton Label="変換・整理" Icon="Edit" Click="Tools_Click" />
         </CommandBar>
 
-        <!-- 列ヘッダー（クリックで並べ替え） -->
-        <Grid x:Name="HeaderGrid" Grid.Row="2" Margin="4,0,4,0" Padding="8,0" ColumnDefinitions="42,*,150,140,110"
-              Background="{ThemeResource LayerFillColorAltBrush}"
-              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+        <!-- 列ヘッダー（クリックで並べ替え・右クリックで列の追加） -->
+        <Grid x:Name="HeaderGrid" Grid.Row="2" Margin="4,0,4,0" Padding="8,0" ColumnDefinitions="42,*,150,140,110,0,0,0"
+              Background="{ThemeResource LayerFillColorAltBrush}" RightTapped="Header_RightTapped"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1"
+              ToolTipService.ToolTip="右クリックで列を追加・削除">
             <Button x:Name="NameHeader" Grid.Column="1" Style="{StaticResource HeaderButton}" Click="SortName_Click" Content="名前" />
             <Button x:Name="ModifiedHeader" Grid.Column="2" Style="{StaticResource HeaderButton}" Click="SortModified_Click" Content="更新日時" />
             <Button x:Name="TypeHeader" Grid.Column="3" Style="{StaticResource HeaderButton}" Click="SortType_Click" Content="種類" />
             <Button x:Name="SizeHeader" Grid.Column="4" Style="{StaticResource HeaderButton}" Click="SortSize_Click" Content="サイズ" HorizontalContentAlignment="Right" />
+            <Button x:Name="Extra0Header" Grid.Column="5" Style="{StaticResource HeaderButton}" Tag="0" Click="SortExtra_Click" Visibility="Collapsed" />
+            <Button x:Name="Extra1Header" Grid.Column="6" Style="{StaticResource HeaderButton}" Tag="1" Click="SortExtra_Click" Visibility="Collapsed" />
+            <Button x:Name="Extra2Header" Grid.Column="7" Style="{StaticResource HeaderButton}" Tag="2" Click="SortExtra_Click" Visibility="Collapsed" />
         </Grid>
 
         <Grid Grid.Row="3">
@@ -103,6 +175,7 @@
                       SelectionChanged="List_SelectionChanged"
                       RightTapped="List_RightTapped"
                       KeyDown="List_KeyDown"
+                      CharacterReceived="List_CharacterReceived"
                       SizeChanged="List_SizeChanged"
                       ContainerContentChanging="List_ContainerContentChanging"
                       CanDragItems="True"
@@ -129,20 +202,59 @@
                 </ListView.GroupStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:FileItem">
-                        <Grid ColumnDefinitions="42,*,150,140,110" Opacity="{x:Bind ItemOpacity}">
+                        <Grid ColumnDefinitions="42,*,150,140,110,0,0,0" Opacity="{x:Bind ItemOpacity}">
                             <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}" HorizontalAlignment="Left" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
-                                <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
+                                <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="6">
+                                    <TextBlock Tag="data" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
+                                    <FontIcon Grid.Column="1" Glyph="&#xE735;" FontSize="12" Foreground="#E2A300" ToolTipService.ToolTip="星付き"
+                                              Visibility="{x:Bind views:Converters.Visible(IsStarred), Mode=OneWay}" />
+                                    <FontIcon Grid.Column="2" Glyph="{x:Bind CloudGlyph, Mode=OneWay}" FontSize="12" Foreground="{x:Bind views:Converters.HexBrush(CloudColor), Mode=OneWay}"
+                                              ToolTipService.ToolTip="{x:Bind CloudTip, Mode=OneWay}" />
+                                    <TextBlock Grid.Column="3" Tag="data" Text="{x:Bind TagsText, Mode=OneWay}" FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                </Grid>
                                 <ProgressBar Visibility="{x:Bind views:Converters.Visible(IsDrive)}" Value="{x:Bind views:Converters.Percent(DriveUsage)}"
                                              Foreground="{x:Bind views:Converters.UsageBrush(DriveUsage)}" Margin="0,3,0,3" HorizontalAlignment="Left" Width="200" MaxWidth="240" />
                             </StackPanel>
                             <TextBlock Grid.Column="2" Text="{x:Bind ModifiedText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
                             <TextBlock Grid.Column="3" Text="{x:Bind TypeText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
                             <TextBlock Grid.Column="4" Text="{x:Bind SizeText, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind SizeDescription, Mode=OneWay}" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+                            <TextBlock Grid.Column="5" Tag="data" Text="{x:Bind Extra0, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="8,0,0,0" />
+                            <TextBlock Grid.Column="6" Tag="data" Text="{x:Bind Extra1, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="8,0,0,0" />
+                            <TextBlock Grid.Column="7" Tag="data" Text="{x:Bind Extra2, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="8,0,0,0" />
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
+
+            <!-- 大アイコン・並べて表示（詳細と同じ操作をそのまま受ける） -->
+            <GridView x:Name="Tiles" Margin="4,4,4,0" Visibility="Collapsed" AutomationProperties.Name="フォルダ内のファイル一覧（アイコン）"
+                      SelectionMode="Extended"
+                      ItemContainerStyle="{StaticResource TileItem}"
+                      ItemTemplate="{StaticResource IconTemplate}"
+                      DoubleTapped="List_DoubleTapped"
+                      SelectionChanged="List_SelectionChanged"
+                      RightTapped="List_RightTapped"
+                      KeyDown="List_KeyDown"
+                      CharacterReceived="List_CharacterReceived"
+                      ContainerContentChanging="List_ContainerContentChanging"
+                      CanDragItems="True"
+                      DragItemsStarting="List_DragItemsStarting"
+                      AllowDrop="True"
+                      DragOver="List_DragOver"
+                      DragLeave="List_DragLeave"
+                      Drop="List_Drop">
+                <GridView.GroupStyle>
+                    <GroupStyle HidesIfEmpty="True">
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate x:DataType="models:ItemGroup">
+                                <TextBlock Text="{x:Bind Header}" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </GridView.GroupStyle>
+            </GridView>
 
             <TextBlock Text="{x:Bind ViewModel.ErrorText, Mode=OneWay}" Visibility="{x:Bind views:Converters.VisibleIf(ViewModel.ErrorText), Mode=OneWay}"
                        HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="24" />

@@ -80,7 +80,7 @@ public sealed class LocalLinkServer : IDisposable
             }
             _open(link);
             await WriteAsync(stream, "200 OK",
-                "<p style=\"font-family:sans-serif\">FileBox で開きました。このタブは閉じてかまいません。</p><script>setTimeout(()=>window.close(),800)</script>", ct);
+                Text.T("<p style=\"font-family:sans-serif\">FileBox で開きました。このタブは閉じてかまいません。</p><script>setTimeout(()=>window.close(),800)</script>"), ct);
         }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
     }

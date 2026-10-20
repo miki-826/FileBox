@@ -22,7 +22,25 @@ public sealed class LinkService
     {
         if (_instance != null) return;
         _instance = new LinkService(store);
-        try { RegisterProtocol(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+        // 設定の「FileBox が変更した Windows の設定」で登録を外した場合は、登録し直さない
+        if (!ProtocolDisabled(store))
+            try { RegisterProtocol(); } catch (Exception ex) { AppLog.Error("filebox:// を登録できませんでした", ex); }
+    }
+
+    public static bool ProtocolDisabled(UserStore store) => store.GetSetting("links.protocol") == "0";
+
+    public static bool IsProtocolRegistered()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Classes\filebox");
+        return key != null;
+    }
+
+    /// <summary>filebox:// の登録を外す（リンクは開けなくなる）。もう一度オンにすると登録し直す。</summary>
+    public static void SetProtocolEnabled(UserStore store, bool on)
+    {
+        store.SetSetting("links.protocol", on ? "1" : "0");
+        if (on) RegisterProtocol();
+        else Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\filebox", throwOnMissingSubKey: false);
     }
 
     public bool AllowUnc => _store.GetSetting("links.allowUnc") == "1";

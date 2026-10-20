@@ -9,7 +9,7 @@ namespace FileBox.Core.Search;
 /// </summary>
 public static class QueryParser
 {
-    static readonly string[] Keys = { "folder", "file", "ext", "size", "modified", "dm", "in", "path", "mode", "regex" };
+    static readonly string[] Keys = { "folder", "file", "ext", "size", "modified", "dm", "in", "path", "mode", "regex", "tag", "is", "content" };
 
     public readonly record struct Token(int Start, int Length, string? Key, string Value, bool Quoted);
 
@@ -59,6 +59,17 @@ public static class QueryParser
                     break;
                 case "regex":
                     if (tok.Value.Length > 0) q.Groups[^1].Add(new SearchTerm(tok.Value, MatchMode.Regex, false, false));
+                    break;
+                // FileBox の中の印と本文検索（索引ではなく App 側で絞る）
+                case "tag":
+                    if (tok.Value.Length > 0) q.Tags.Add(tok.Value);
+                    break;
+                case "is":
+                    if (tok.Value.Equals("starred", StringComparison.OrdinalIgnoreCase)) q.Starred = true;
+                    else q.Errors.Add($"is の指定が不正です: {tok.Value}（is:starred が使えます）");
+                    break;
+                case "content":
+                    if (tok.Value.Length > 0) q.ContentTerms.Add(tok.Value);
                     break;
                 default:
                     AddTerm(q, tok.Value, tok.Quoted);

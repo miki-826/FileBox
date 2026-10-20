@@ -25,6 +25,14 @@ public partial class App : Application
 
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        // 言語とアクセント色は、ウィンドウを作る前に読み込む（作った後では反映されない部分があるため）
+        try
+        {
+            using var store = new Data.UserStore();
+            Services.Text.Initialize(store);
+            Services.ThemeService.ApplyAccent(this, Services.ThemeService.Accent(store));
+        }
+        catch (Exception ex) { Services.AppLog.Error("表示の設定を読み込めませんでした", ex); }
         Window = new MainWindow();
         Window.OpenFromArguments(Environment.GetCommandLineArgs().Skip(1));
         Window.Activate();
@@ -63,9 +71,13 @@ public partial class App : Application
 
     static bool _showingError;
 
-    public static void ShowError(string message, Exception? ex = null)
+    /// <summary>
+    /// エラーを、原因と対処が分かる言葉で表示する（例外のメッセージは「詳しい情報」に畳む）。
+    /// path を渡すと、使用中のときにどのアプリが使っているかも調べて添える。
+    /// </summary>
+    public static void ShowError(string message, Exception? ex = null, string? path = null)
     {
-        System.Diagnostics.Debug.WriteLine($"{message}: {ex}");
+        Services.AppLog.Error(path == null ? message : $"{message} ({path})", ex);
         var window = Window;
         if (window?.Content?.XamlRoot == null || _showingError) return;
         window.DispatcherQueue.TryEnqueue(async () =>
@@ -74,16 +86,34 @@ public partial class App : Application
             _showingError = true;
             try
             {
+                var panel = new StackPanel { Spacing = 8, MaxWidth = 460 };
+                if (ex != null)
+                {
+                    var explained = Core.Files.FriendlyError.Explain(ex);
+                    panel.Children.Add(new TextBlock { Text = explained.Cause, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+                    if (explained.Action.Length > 0) panel.Children.Add(new TextBlock { Text = explained.Action, TextWrapping = TextWrapping.Wrap });
+                    if (explained.IsInUse && path != null)
+                    {
+                        var apps = await Task.Run(() => Services.FileLocks.WhoIsUsing(path));
+                        if (apps.Count > 0) panel.Children.Add(new TextBlock { Text = $"使っているアプリ: {string.Join("、", apps)}", TextWrapping = TextWrapping.Wrap });
+                    }
+                    panel.Children.Add(new Expander
+                    {
+                        Header = "詳しい情報",
+                        HorizontalAlignment = HorizontalAlignment.Stretch,
+                        Content = new TextBlock { Text = $"{ex.Message}\n(0x{ex.HResult:X8} {ex.GetType().Name})", TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontSize = 12 },
+                    });
+                }
                 var dialog = new ContentDialog
                 {
                     XamlRoot = window.Content.XamlRoot,
                     Title = message,
-                    Content = new TextBlock { Text = ex?.Message ?? "", TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true },
+                    Content = panel,
                     CloseButtonText = "閉じる",
                 };
                 await dialog.ShowAsync();
             }
-            catch (Exception) { }
+            catch (Exception e) { Services.AppLog.Error("エラーの表示に失敗しました", e); }
             finally { _showingError = false; }
         });
     }

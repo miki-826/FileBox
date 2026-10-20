@@ -137,16 +137,15 @@ abstract class TermMatcher
             MatchMode.Wildcard => new RegexMatcher(WildcardToRegex(text), LongestLiteral(text)),
             MatchMode.Regex => new RegexMatcher(text),
             MatchMode.Fuzzy => new AnySubstringMatcher(KanaConverter.FuzzyVariants(text)),
-            _ => NeedsWidthVariant(text)
-                ? new AnySubstringMatcher(new[] { text, text.Normalize(NormalizationForm.FormKC) })
+            // 全角半角・かなの種類・ローマ字の揺れも探す
+            _ => KanaConverter.SearchVariants(text) is { Count: > 1 } variants
+                ? new AnySubstringMatcher(variants)
                 : new SubstringMatcher(text),
         };
         m.Negate = term.Negate;
         m.OnPath = term.OnPath;
         return m;
     }
-
-    static bool NeedsWidthVariant(string s) => !s.Equals(s.Normalize(NormalizationForm.FormKC), StringComparison.Ordinal);
 
     /// <summary>ワイルドカードを含まない最長の固定部分（正規表現の前に Contains で高速に絞り込むため）。</summary>
     static string? LongestLiteral(string pattern)

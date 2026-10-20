@@ -25,23 +25,18 @@ public static class SuggestMoveDialog
     /// <summary>移動して学習し、元に戻せる通知を出す。</summary>
     public static async Task<string?> MoveAndLearnAsync(IReadOnlyList<string> files, string target, SuggestionResult? shown)
     {
-        if (!await Guard.TransferAsync(files, target, move: true, "move")) return null;
-        var (op, errors) = await FileMover.MoveAsync(files, target);
-        Guard.Transferred(op.Moves.Select(m => m.From).ToList(), target, move: true, "move");
-        foreach (var (from, _) in op.Moves)
+        var (op, errors) = await FileOperations.Instance.MoveQuietAsync(files, target);
+        foreach (var (from, _) in op?.Items ?? Array.Empty<(string, string)>())
             SuggestionService.Instance.Record(Path.GetFileName(from), target, files.Count == 1 ? shown : null);
 
         var window = App.Window;
-        if (window == null) return target;
+        if (window == null) return op != null ? target : null;
         if (errors.Count > 0)
             window.ShowInfo($"{errors.Count} 件を移動できませんでした: {errors[0]}", InfoBarSeverity.Error);
-        else if (op.Moves.Count > 0)
-            window.ShowInfo($"{op.Moves.Count} 件を「{Leaf(target)}」へ移動しました", InfoBarSeverity.Success, "元に戻す", async () =>
-            {
-                int n = await FileMover.UndoAsync(op);
-                window.ShowInfo($"{n} 件を元の場所に戻しました");
-            });
-        return op.Moves.Count > 0 ? target : null;
+        else if (op != null)
+            window.ShowInfo($"{op.Items.Count} 件を「{Leaf(target)}」へ移動しました", InfoBarSeverity.Success, "元に戻す (Ctrl+Z)",
+                () => _ = FileOperations.Instance.UndoAsync());
+        return op != null ? target : null;
     }
 
     /// <summary>提案ダイアログだけを表示する。キャンセル時は null。</summary>
