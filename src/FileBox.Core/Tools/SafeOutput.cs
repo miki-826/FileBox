@@ -44,9 +44,11 @@ public sealed class SafeOutput : IDisposable
         if (Files.BatchRename.Validate(fileName) != null) throw new IOException("出力ファイル名が正しくありません");
         AssertOwned(staged);
         RejectReparseParents(Destination);
+        string extension = fileName.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ? fileName[^7..] : Path.GetExtension(fileName);
+        string stem = fileName[..^extension.Length];
         for (int n = 1; n < 100000; n++)
         {
-            string name = n == 1 ? fileName : Path.GetFileNameWithoutExtension(fileName) + $" ({n})" + Path.GetExtension(fileName);
+            string name = n == 1 ? fileName : stem + $" ({n})" + extension;
             string target = Path.Combine(Destination, name);
             if (File.Exists(target) || Directory.Exists(target)) continue;
             try { File.Move(staged, target, overwrite: false); return target; }

@@ -128,6 +128,15 @@ public sealed class ConversionTests : IDisposable
         Assert.False(Directory.Exists(work)); Assert.Equal("original", File.ReadAllText(original));
     }
 
+    [Fact]
+    public void CollisionKeepsTheWholeTarGzipExtension()
+    {
+        FileAt("data.tar.gz");
+        using var stage = new SafeOutput(_root);
+        string prepared = Path.Combine(stage.WorkPath, "out.tar.gz"); File.WriteAllText(prepared, "new");
+        Assert.Equal("data (2).tar.gz", Path.GetFileName(stage.PublishFile(prepared, "data.tar.gz")));
+    }
+
     [Theory]
     [InlineData("zip")]
     [InlineData("tar")]
