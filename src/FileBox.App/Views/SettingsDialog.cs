@@ -28,20 +28,54 @@ public static class SettingsDialog
 
         // ---- エクスプローラー置き換え（02_機能設計 §7）
         panel.Children.Add(Header("エクスプローラーの代わりに使う"));
-        var replace = Toggle("フォルダやドライブを開くときに FileBox を使う", explorer.IsEnabled && explorer.IsActiveInRegistry(),
-            "デスクトップやスタートメニューからフォルダを開くと FileBox が開きます。オフにすると元のエクスプローラーに戻ります（変更は現在のユーザーだけ）。");
-        replace.Toggled += (_, _) =>
+        bool FolderOn() => explorer.IsEnabled && explorer.IsActiveInRegistry();
+        bool WinEOn() => explorer.WinEEnabled && explorer.IsWinEActiveInRegistry();
+        bool syncing = false;
+        var all = Toggle("FileBox をエクスプローラーの代わりに使う", FolderOn() && WinEOn(),
+            "フォルダやドライブを開いたとき、Win + E、タスクバーのエクスプローラーのボタンで FileBox が開きます。FileBox が起動していなくても使えます。オフにすると変更前の状態に戻ります（変更は現在のユーザーだけ）。");
+        var replace = Toggle("フォルダやドライブを開くときに FileBox を使う", FolderOn(),
+            "デスクトップ・スタートメニュー・ほかのアプリからフォルダを開いたときです。");
+        var winE = Toggle("Win + E とタスクバーのエクスプローラーで FileBox を開く", WinEOn(),
+            "どちらも「PC」を新しいタブで開きます。");
+        var status = new InfoBar { IsClosable = false };
+        void Sync()
         {
-            try
-            {
-                if (replace.IsOn) explorer.Enable(); else explorer.Disable();
-            }
+            syncing = true;
+            replace.IsOn = FolderOn();
+            winE.IsOn = WinEOn();
+            all.IsOn = replace.IsOn && winE.IsOn;
+            syncing = false;
+            // 設定はオンなのに登録が無い＝ほかのアプリ（別のファイラーなど）が書き換えた
+            bool overwritten = (explorer.IsEnabled && !explorer.IsActiveInRegistry()) || (explorer.WinEEnabled && !explorer.IsWinEActiveInRegistry());
+            status.Severity = overwritten ? InfoBarSeverity.Warning : all.IsOn ? InfoBarSeverity.Success : InfoBarSeverity.Informational;
+            status.Title = overwritten ? "ほかのアプリが設定を変更しています" : all.IsOn ? "エクスプローラーの代わりに使っています" : replace.IsOn || winE.IsOn ? "一部だけ FileBox で開きます" : "いまはエクスプローラーを使っています";
+            status.Message = overwritten ? "オンにし直すと、もう一度 FileBox で開くようにします。"
+                : all.IsOn || replace.IsOn || winE.IsOn ? $"登録した FileBox: {Environment.ProcessPath}"
+                : "ごみ箱・コントロールパネルなどの特別な場所は、オンにしてもエクスプローラーで開きます。";
+            status.IsOpen = true;
+        }
+        void Apply(Action change)
+        {
+            if (syncing) return;
+            try { change(); }
             catch (Exception ex) { App.ShowError("設定を変更できませんでした", ex); }
-        };
-        panel.Children.Add(replace);
-        var winE = Toggle("Win + E で FileBox を開く", explorer.WinEEnabled, "FileBox が起動している間だけ有効です。");
-        winE.Toggled += (_, _) => explorer.SetWinE(winE.IsOn);
-        panel.Children.Add(winE);
+            Sync();
+        }
+        all.Toggled += (_, _) => Apply(() =>
+        {
+            if (all.IsOn) { if (!FolderOn()) explorer.Enable(); if (!WinEOn()) explorer.SetWinE(true); }
+            else { if (explorer.IsEnabled || explorer.IsActiveInRegistry()) explorer.Disable(); if (explorer.WinEEnabled || explorer.IsWinEActiveInRegistry()) explorer.SetWinE(false); }
+        });
+        replace.Toggled += (_, _) => Apply(() => { if (replace.IsOn) explorer.Enable(); else explorer.Disable(); });
+        winE.Toggled += (_, _) => Apply(() => explorer.SetWinE(winE.IsOn));
+        Sync();
+        panel.Children.Add(all);
+        panel.Children.Add(status);
+        var detail = new StackPanel { Spacing = 12 };
+        detail.Children.Add(replace);
+        detail.Children.Add(winE);
+        detail.Children.Add(Note("FileBox が応答しないときは、フォルダはエクスプローラーで開きます。ほかのアプリが explorer.exe を直接起動する場合（「フォルダーに表示」など）はエクスプローラーが開きます。アンインストールすると元に戻します。"));
+        panel.Children.Add(Section("個別に選ぶ", detail));
         panel.Children.Add(ConversionSettings.Build(store));
 
         // ---- 保存先の提案（§1）
@@ -164,7 +198,7 @@ public static class SettingsDialog
 
         // ---- FileBox が変更した Windows の設定（元に戻せる）
         panel.Children.Add(Header("FileBox が変更した Windows の設定"));
-        panel.Children.Add(ChangesSection(store, () => { replace.IsOn = explorer.IsEnabled && explorer.IsActiveInRegistry(); winE.IsOn = explorer.WinEEnabled; hotkeyToggle.IsOn = hotkey.Enabled; }));
+        panel.Children.Add(ChangesSection(store, () => { Sync(); hotkeyToggle.IsOn = hotkey.Enabled; }));
         panel.Children.Insert(0, restartNote);
 
         var dialog = new ContentDialog
@@ -286,10 +320,10 @@ public static class SettingsDialog
                 row.Buttons.Children.Add(SmallButton("", "元に戻す", () => { explorer.Disable(); Render(); refresh(); }));
                 body.Children.Add(row.Grid);
             }
-            if (explorer.WinEEnabled)
+            if (explorer.WinEEnabled || explorer.IsWinEActiveInRegistry())
             {
                 count++;
-                var row = Row("Win + E を FileBox で受ける（起動中だけのキーボードフック）", "FileBox を終了すると元に戻ります");
+                var row = Row("Win + E とタスクバーのエクスプローラーで FileBox を開く（レジストリ: HKCU\\Software\\Classes\\CLSID\\{52205fd8-…}）", "変更前の値を記録しています");
                 row.Buttons.Children.Add(SmallButton("", "オフにする", () => { explorer.SetWinE(false); Render(); refresh(); }));
                 body.Children.Add(row.Grid);
             }
@@ -342,7 +376,7 @@ public static class SettingsDialog
                     {
                         var explorer2 = ExplorerIntegration.Instance;
                         if (explorer2.IsEnabled || explorer2.IsActiveInRegistry()) explorer2.Disable();
-                        if (explorer2.WinEEnabled) explorer2.SetWinE(false);
+                        if (explorer2.WinEEnabled || explorer2.IsWinEActiveInRegistry()) explorer2.SetWinE(false);
                         if (GlobalHotkey.Instance.Enabled) GlobalHotkey.Instance.Set(false, GlobalHotkey.Instance.ChoiceIndex);
                         if (ConversionContextMenu.Enabled(store)) ConversionContextMenu.Apply(store, false);
                         foreach (var drive in NetworkDrives.Mapped(store).Keys.ToList()) NetworkDrives.Disconnect(store, drive);
@@ -373,6 +407,9 @@ public static class SettingsDialog
                 Foreground = Secondary,
             });
         toggle.Header = head;
+        // 見出しが文字だけでないため名前が自動で付かず、読み上げが「オン」「オフ」だけになるのを防ぐ
+        toggle.Named(header);
+        if (description != null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(toggle, description);
         return toggle;
     }
 

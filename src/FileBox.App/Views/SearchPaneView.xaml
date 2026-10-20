@@ -4,7 +4,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:FileBox.App.Models"
-    xmlns:views="using:FileBox.App.Views">
+    xmlns:views="using:FileBox.App.Views"
+    SizeChanged="SearchPane_SizeChanged">
 
     <UserControl.Resources>
         <Style x:Key="CompactItem" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
@@ -25,14 +26,15 @@
     </UserControl.Resources>
 
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
-        <Grid Padding="16,14" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12"
+        <Grid Padding="16,6" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" MinHeight="40"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-            <FontIcon Glyph="&#xE721;" FontSize="20" />
-            <StackPanel Grid.Column="1" Spacing="4">
-                <TextBlock Tag="data" Text="{x:Bind ViewModel.Query, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </StackPanel>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{x:Bind ViewModel.ResultCount, Mode=OneWay}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.ElapsedText, Mode=OneWay}" FontSize="11" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontSize="12" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind ViewModel.Summary, Mode=OneWay}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <ProgressRing IsActive="{x:Bind ViewModel.IsSearching, Mode=OneWay}" Width="18" Height="18" />
                 <Button Content="さらに表示" Click="LoadMore_Click" Visibility="{x:Bind views:Converters.Visible(ViewModel.CanLoadMore), Mode=OneWay}" />
             </StackPanel>
@@ -42,17 +44,15 @@
                  IsOpen="True" Visibility="{x:Bind views:Converters.VisibleIf(ViewModel.ErrorText), Mode=OneWay}" />
 
         <!-- 結果の絞り込み（種類・更新日時・サイズ）。押すと検索欄に条件が入る -->
-        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
-            <StackPanel x:Name="FacetPanel" Orientation="Horizontal" Spacing="6" Padding="12,8,12,4" />
-        </ScrollViewer>
+        <StackPanel x:Name="FacetPanel" Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="12,6,12,4" />
 
         <!-- 列ヘッダー（クリックで並べ替え） -->
-        <Grid x:Name="HeaderGrid" Grid.Row="3" Margin="4,4,4,0" Padding="10,0" ColumnDefinitions="42,*,90,130,40"
+        <Grid x:Name="HeaderGrid" Grid.Row="3" Margin="14,4,14,0" ColumnDefinitions="42,*,90,130,40"
               Background="{ThemeResource LayerFillColorAltBrush}"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-            <Button x:Name="NameHeader" Grid.Column="1" Style="{StaticResource HeaderButton}" Tag="Name" Click="Sort_Click" Content="名前・場所" />
-            <Button x:Name="SizeHeader" Grid.Column="2" Style="{StaticResource HeaderButton}" Tag="Size" Click="Sort_Click" Content="サイズ" HorizontalContentAlignment="Right" />
-            <Button x:Name="ModifiedHeader" Grid.Column="3" Style="{StaticResource HeaderButton}" Tag="Modified" Click="Sort_Click" Content="更新日時" />
+            <Button x:Name="NameHeader" Grid.Column="1" Style="{StaticResource HeaderButton}" Tag="Name" Click="Sort_Click" Content="名前・場所" Padding="0,6" />
+            <Button x:Name="SizeHeader" Grid.Column="2" Style="{StaticResource HeaderButton}" Tag="Size" Click="Sort_Click" Content="サイズ" HorizontalContentAlignment="Right" Padding="0,6,12,6" />
+            <Button x:Name="ModifiedHeader" Grid.Column="3" Style="{StaticResource HeaderButton}" Tag="Modified" Click="Sort_Click" Content="更新日時" Padding="0,6" />
         </Grid>
 
         <ListView x:Name="List" Grid.Row="4" Margin="4,4,4,0" AutomationProperties.Name="検索結果一覧"
@@ -65,6 +65,7 @@
                   ContextRequested="List_ContextRequested"
                   KeyDown="List_KeyDown"
                   SizeChanged="List_SizeChanged"
+                  LayoutUpdated="List_LayoutUpdated"
                   ContainerContentChanging="List_ContainerContentChanging">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:FileItem">
@@ -81,7 +82,7 @@
                             <TextBlock Tag="data" Text="{x:Bind Snippet}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
                                        Visibility="{x:Bind views:Converters.VisibleIf(Snippet)}" FontStyle="Italic" />
                         </StackPanel>
-                        <TextBlock Grid.Column="2" Text="{x:Bind HumanSize, Mode=OneWay}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind views:SearchPaneView.SearchSize(IsDirectory, HumanSize), Mode=OneWay}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <TextBlock Grid.Column="3" Text="{x:Bind ModifiedText}" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <!-- マウスを乗せたときだけ出す「場所を開く」 -->
                         <Button Grid.Column="4" Opacity="0" Padding="6" Background="Transparent" BorderThickness="0" Click="Reveal_Click"

@@ -50,7 +50,7 @@ public partial class App : Application
         var paths = parts.Where(p => !string.Equals(p, self, StringComparison.OrdinalIgnoreCase) && !p.EndsWith("FileBox.exe", StringComparison.OrdinalIgnoreCase)).ToList();
         window.DispatcherQueue.TryEnqueue(() =>
         {
-            window.OpenFromArguments(paths);
+            window.OpenFromArguments(paths, redirected: true);
             window.Activate();
             SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(window));
         });

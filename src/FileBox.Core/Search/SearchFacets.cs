@@ -1,3 +1,5 @@
+using FileBox.Core.Tools;
+
 namespace FileBox.Core.Search;
 
 /// <summary>結果の絞り込み候補 1 つ。Key / Value は QueryEditor.SetValue に渡す（例: ext / pdf）。</summary>
@@ -12,6 +14,23 @@ public readonly record struct FacetInput(string Name, bool IsDirectory, long Siz
 /// </summary>
 public static class SearchFacets
 {
+    // 画像・動画・音声は変換機能と同じ分類を使う。検索条件には分類全体の拡張子を渡す。
+    static readonly (string Label, string[] Extensions)[] FileKinds =
+    {
+        ("画像", ToolCatalog.Get(ToolKind.ImageConvert).Extensions),
+        ("動画", ToolCatalog.Get(ToolKind.VideoConvert).Extensions),
+        ("音声", ToolCatalog.Get(ToolKind.AudioConvert).Extensions),
+        ("Office", new[] { "doc", "docx", "docm", "xls", "xlsx", "xlsm", "ppt", "pptx", "pptm" }),
+        ("PDF", new[] { "pdf" }),
+    };
+
+    static (string Label, string Value) FileKind(string extension)
+    {
+        foreach (var (label, extensions) in FileKinds)
+            if (extensions.Contains(extension)) return (label, string.Join(',', extensions));
+        return ("." + extension, extension);
+    }
+
     static readonly (string Label, string Value, Func<DateTime, DateTime, bool> Match)[] Dates =
     {
         ("今日", "today", (d, today) => d >= today),
@@ -28,23 +47,22 @@ public static class SearchFacets
         ("1GB 以上", ">=1GB", 1L << 30, long.MaxValue),
     };
 
-    /// <summary>items の集計。種類は多い順に maxKinds 個まで。件数 0 の候補や、全件が当てはまる（絞り込めない）候補は出さない。</summary>
-    public static IReadOnlyList<Facet> Build(IReadOnlyList<FacetInput> items, DateTime today, int maxKinds = 6)
+    /// <summary>items の集計。種類は多い順に maxKinds 個まで（既定は全種類）。件数 0 や、全件が当てはまる候補は出さない。</summary>
+    public static IReadOnlyList<Facet> Build(IReadOnlyList<FacetInput> items, DateTime today, int maxKinds = int.MaxValue)
     {
         var list = new List<Facet>();
         if (items.Count == 0) return list;
         today = today.Date;
 
         int folders = items.Count(i => i.IsDirectory);
-        var exts = items.Where(i => !i.IsDirectory)
+        var kinds = items.Where(i => !i.IsDirectory)
             .Select(i => System.IO.Path.GetExtension(i.Name).TrimStart('.').ToLowerInvariant())
             .Where(e => e.Length > 0)
-            .GroupBy(e => e)
-            .OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
-            .Take(maxKinds);
-        if (folders > 0 && folders < items.Count) list.Add(new("種類", "フォルダー", "folder", "", folders));
-        foreach (var g in exts)
-            if (g.Count() < items.Count) list.Add(new("種類", g.Key.ToUpperInvariant(), "ext", g.Key, g.Count()));
+            .GroupBy(FileKind)
+            .Where(g => g.Count() < items.Count)
+            .Select(g => new Facet("種類", g.Key.Label, "ext", g.Key.Value, g.Count())).ToList();
+        if (folders > 0 && folders < items.Count) kinds.Add(new("種類", "フォルダー", "folder", "", folders));
+        list.AddRange(kinds.OrderByDescending(f => f.Count).ThenBy(f => f.Label, StringComparer.Ordinal).Take(maxKinds));
 
         foreach (var (label, value, match) in Dates)
         {

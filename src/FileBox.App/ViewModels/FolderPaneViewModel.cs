@@ -227,7 +227,9 @@ public sealed partial class FolderPaneViewModel : PaneViewModel
                     IsDrive = true,
                     Size = d.TotalSize,
                     DriveUsage = usage,
-                    DriveInfoText = $"空き {Format.HumanSize(d.TotalFreeSpace)} / {Format.HumanSize(d.TotalSize)}",
+                    // 列に収まるよう一覧には空きだけを出し、合計はツールチップと使用率のバーで示す
+                    DriveInfoText = $"{Format.HumanSize(d.TotalFreeSpace)} 空き",
+                    DriveDetailText = $"空き {Format.HumanSize(d.TotalFreeSpace)} / 合計 {Format.HumanSize(d.TotalSize)}（{usage:P0} 使用）",
                 };
             }).ToList();
         }

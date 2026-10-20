@@ -9,8 +9,9 @@ namespace FileBox.App.Services;
 /// エクスプローラー置き換え（02_機能設計 §7）。HKCU だけを変更し、変更前の値を user.db に退避して
 /// オフにしたときに完全に元へ戻す。対象は実在のフォルダ（Directory）とドライブ（Drive）だけで、
 /// ごみ箱・コントロールパネルなどの仮想フォルダ（Folder）はエクスプローラーのまま。
+/// Win + E とタスクバーのエクスプローラーのボタンは、「PC」の新しいウィンドウを開く動詞を HKCU に置いて受ける。
 /// </summary>
-public sealed class ExplorerIntegration : IDisposable
+public sealed class ExplorerIntegration
 {
     static ExplorerIntegration? _instance;
     public static ExplorerIntegration Instance => _instance ?? throw new InvalidOperationException("ExplorerIntegration.Initialize が未実行");
@@ -19,23 +20,23 @@ public sealed class ExplorerIntegration : IDisposable
     static readonly string[] Classes = { "Directory", "Drive" };
 
     readonly UserStore _store;
-    WinEHook? _hook;
 
     ExplorerIntegration(UserStore store) => _store = store;
 
-    public static void Initialize(UserStore store, Action onWinE)
+    public static void Initialize(UserStore store)
     {
         if (_instance != null) return;
         _instance = new ExplorerIntegration(store);
+        // 実行ファイルの場所が変わっていても追従する
         if (_instance.IsEnabled)
         {
-            try { _instance.WriteVerbs(); } catch (Exception ex) { Debug.WriteLine(ex); }   // 実行ファイルの場所が変わっていても追従
+            try { _instance.WriteVerbs(); } catch (Exception ex) { Debug.WriteLine(ex); }
         }
-        _instance._onWinE = onWinE;
-        if (_instance.WinEEnabled) _instance.StartHook();
+        if (_instance.WinEEnabled)
+        {
+            try { _instance.SetWinE(true); } catch (Exception ex) { Debug.WriteLine(ex); }
+        }
     }
-
-    Action? _onWinE;
 
     public bool IsEnabled => _store.GetSetting("explorer.replace") == "1";
     public bool WinEEnabled => _store.GetSetting("explorer.winE") == "1";
@@ -58,7 +59,7 @@ public sealed class ExplorerIntegration : IDisposable
 
     void WriteVerbs()
     {
-        string exe = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "FileBox.exe");
+        string exe = Exe;
         foreach (var cls in Classes)
         {
             using var shell = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\shell");
@@ -114,102 +115,92 @@ public sealed class ExplorerIntegration : IDisposable
 
     static void NotifyShell() => SHChangeNotify(0x08000000 /* SHCNE_ASSOCCHANGED */, 0, IntPtr.Zero, IntPtr.Zero);
 
-    // ================================================================ Win+E（§7.1）
+    // ================================================================ Win+E とタスクバーのエクスプローラー（§7.1）
+
+    // Win + E とタスクバーのエクスプローラーのボタンは、「PC」の opennewwindow 動詞で新しいウィンドウを開く。
+    // HKCU にこの動詞を置くと、FileBox が起動していなくても FileBox が開く（HKLM の既定は変えない）
+    const string HomeClsid = @"Software\Classes\CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}";
+    const string HomeCommand = HomeClsid + @"\shell\opennewwindow\command";
 
     public void SetWinE(bool on)
     {
-        _store.SetSetting("explorer.winE", on ? "1" : "0");
-        if (on) StartHook(); else StopHook();
+        if (on)
+        {
+            if (_store.GetSetting("explorer.winE.backup") is not { Length: > 0 }) BackupHome();
+            WriteHome();
+            _store.SetSetting("explorer.winE", "1");
+        }
+        else
+        {
+            RestoreHome();
+            _store.SetSetting("explorer.winE", "0");
+        }
     }
 
-    void StartHook()
+    /// <summary>Win + E が FileBox を開くようになっているか（他のツールに上書きされていないか）。</summary>
+    public bool IsWinEActiveInRegistry()
     {
-        if (_hook != null || _onWinE == null) return;
-        _hook = new WinEHook(_onWinE);
-        if (!_hook.Install()) _hook = null;
+        using var key = Registry.CurrentUser.OpenSubKey(HomeCommand);
+        return key?.GetValue("") is string cmd && cmd.Contains("--home", StringComparison.Ordinal) && cmd.Contains("FileBox", StringComparison.OrdinalIgnoreCase);
     }
 
-    void StopHook()
+    /// <summary>変更前の値を「有無|既定値|DelegateExecute」で記録する（HKCU には普通は無い）。</summary>
+    void BackupHome()
     {
-        _hook?.Dispose();
-        _hook = null;
+        using var key = Registry.CurrentUser.OpenSubKey(HomeCommand);
+        string backup = key == null ? "0" : $"1|{key.GetValue("") as string}|{key.GetValue("DelegateExecute") as string}";
+        _store.SetSetting("explorer.winE.backup", backup);
     }
 
-    public void Dispose() => StopHook();
+    void WriteHome()
+    {
+        using var cmd = Registry.CurrentUser.CreateSubKey(HomeCommand);
+        cmd.SetValue("", $"\"{Exe}\" --home");
+        // 空の DelegateExecute があると、既定の COM の処理ではなく上のコマンドが使われる
+        cmd.SetValue("DelegateExecute", "");
+    }
+
+    void RestoreHome()
+    {
+        string[] parts = (_store.GetSetting("explorer.winE.backup") ?? "0").Split('|');
+        try
+        {
+            if (parts.Length >= 3 && parts[0] == "1")
+            {
+                using var cmd = Registry.CurrentUser.CreateSubKey(HomeCommand);
+                cmd.SetValue("", parts[1]);
+                cmd.SetValue("DelegateExecute", parts[2]);
+            }
+            else
+            {
+                Registry.CurrentUser.DeleteSubKeyTree(HomeClsid + @"\shell\opennewwindow", throwOnMissingSubKey: false);
+                // FileBox が作っただけの空のキーは消す
+                foreach (var path in new[] { HomeClsid + @"\shell", HomeClsid })
+                {
+                    using var key = Registry.CurrentUser.OpenSubKey(path);
+                    if (key != null && key.SubKeyCount == 0 && key.ValueCount == 0) Registry.CurrentUser.DeleteSubKey(path, throwOnMissingSubKey: false);
+                }
+            }
+        }
+        catch (Exception ex) { Debug.WriteLine(ex); }
+        _store.SetSetting("explorer.winE.backup", "");
+    }
+
+    static string Exe => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "FileBox.exe");
+
+    /// <summary>
+    /// アンインストール時（FileBox.exe --unregister-shell）。FileBox が Windows に加えた登録をすべて変更前に戻す。
+    /// 画面は作らずに終わる。
+    /// </summary>
+    public static void RevertAll(UserStore store)
+    {
+        var integration = new ExplorerIntegration(store);
+        try { if (integration.IsEnabled || integration.IsActiveInRegistry()) integration.Disable(); }
+        catch (Exception ex) { Debug.WriteLine(ex); }
+        try { if (integration.WinEEnabled || integration.IsWinEActiveInRegistry()) integration.SetWinE(false); }
+        catch (Exception ex) { Debug.WriteLine(ex); }
+    }
 
     [DllImport("shell32.dll")]
     static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
-}
-
-/// <summary>
-/// Win+E を FileBox で受ける低レベルキーボードフック。FileBox 起動中だけ有効（UI スレッドで設置する）。
-/// </summary>
-sealed class WinEHook : IDisposable
-{
-    readonly Action _onWinE;
-    readonly LowLevelKeyboardProc _proc;   // GC されないよう保持
-    IntPtr _hook;
-
-    public WinEHook(Action onWinE)
-    {
-        _onWinE = onWinE;
-        _proc = Callback;
-    }
-
-    public bool Install()
-    {
-        _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
-        return _hook != IntPtr.Zero;
-    }
-
-    IntPtr Callback(int code, IntPtr wParam, IntPtr lParam)
-    {
-        if (code >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN))
-        {
-            int vk = Marshal.ReadInt32(lParam);
-            bool win = (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
-            if (vk == 'E' && win)
-            {
-                // フック内では重い処理をしない（遅いと OS にフックを外される）
-                App.Window?.DispatcherQueue.TryEnqueue(() => _onWinE());
-                // Win キーだけが押されたと見なされてスタートメニューが開くのを防ぐため、未割り当てのキーを1回送る
-                keybd_event(0xE8, 0, 0, UIntPtr.Zero);
-                keybd_event(0xE8, 0, 2, UIntPtr.Zero);
-                return 1;
-            }
-        }
-        return CallNextHookEx(_hook, code, wParam, lParam);
-    }
-
-    public void Dispose()
-    {
-        if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);
-        _hook = IntPtr.Zero;
-    }
-
-    const int WH_KEYBOARD_LL = 13;
-    static readonly IntPtr WM_KEYDOWN = 0x0100;
-    static readonly IntPtr WM_SYSKEYDOWN = 0x0104;
-    const int VK_LWIN = 0x5B;
-    const int VK_RWIN = 0x5C;
-
-    delegate IntPtr LowLevelKeyboardProc(int code, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc proc, IntPtr hMod, uint threadId);
-
-    [DllImport("user32.dll")]
-    static extern bool UnhookWindowsHookEx(IntPtr hook);
-
-    [DllImport("user32.dll")]
-    static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    static extern short GetAsyncKeyState(int vk);
-
-    [DllImport("user32.dll")]
-    static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    static extern IntPtr GetModuleHandle(string? name);
 }

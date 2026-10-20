@@ -156,14 +156,14 @@
         <CommandBar Grid.Row="1" DefaultLabelPosition="Right" IsDynamicOverflowEnabled="True" OverflowButtonVisibility="Auto"
                     Background="Transparent" HorizontalAlignment="Left" Padding="4,2" AutomationProperties.Name="ファイル操作">
             <AppBarButton x:Name="NewFolderButton" Label="新規フォルダ" Icon="NewFolder" Click="NewFolder_Click" ToolTipService.ToolTip="新しいフォルダー (Ctrl+Shift+N)" />
-            <AppBarSeparator />
+            <AppBarSeparator x:Name="EditSeparator" />
             <AppBarButton x:Name="CutButton" Label="切り取り" Icon="Cut" Click="Cut_Click" ToolTipService.ToolTip="切り取り (Ctrl+X)" />
             <AppBarButton x:Name="CopyButton" Label="コピー" Icon="Copy" Click="Copy_Click" ToolTipService.ToolTip="コピー (Ctrl+C)" />
             <AppBarButton x:Name="PasteButton" Label="貼り付け" Icon="Paste" Click="Paste_Click" ToolTipService.ToolTip="貼り付け (Ctrl+V)" />
             <AppBarButton x:Name="RenameButton" Label="名前の変更" Icon="Rename" Click="Rename_Click" ToolTipService.ToolTip="名前の変更 (F2)。複数選ぶと一括で変更" />
             <AppBarButton x:Name="DeleteButton" Label="削除" Icon="Delete" Click="Delete_Click" ToolTipService.ToolTip="ごみ箱へ移動 (Delete)" />
             <AppBarButton x:Name="UndoButton" Label="元に戻す" Icon="Undo" Click="Undo_Click" ToolTipService.ToolTip="元に戻す (Ctrl+Z)" />
-            <AppBarSeparator />
+            <AppBarSeparator x:Name="ViewSeparator" />
             <AppBarButton x:Name="ViewButton" Label="表示" ToolTipService.ToolTip="表示のしかた・大きさ (Ctrl+ホイール)">
                 <AppBarButton.Icon>
                     <FontIcon Glyph="&#xE8FD;" />
@@ -214,7 +214,7 @@
             <AppBarToggleButton x:Name="GroupButton" Label="日付でまとめる" Icon="Calendar" Click="Group_Click" />
             <AppBarButton x:Name="OrganizeButton" Label="整理の提案" Icon="MoveToFolder" Click="Organize_Click" Visibility="Collapsed" ToolTipService.ToolTip="ダウンロードのファイルに保存先を提案" />
             <AppBarButton Label="プレビュー" Icon="Preview" Click="Preview_Click" ToolTipService.ToolTip="プレビューと詳細 (Space)" />
-            <AppBarButton Label="変換・整理" Icon="Edit" Click="Tools_Click" />
+            <AppBarButton x:Name="ToolsButton" Label="変換・整理" Icon="Edit" Click="Tools_Click" />
         </CommandBar>
 
         <!-- 列ヘッダー（クリックで並べ替え・右クリックで列の追加） -->

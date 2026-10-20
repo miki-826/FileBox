@@ -362,6 +362,10 @@ public sealed partial class FolderPaneView : UserControl
         UpdateExtraHeaders();
         UpdateCommandButtons();
         UndoButton.IsEnabled = FileOperations.Instance.Journal.CanUndo;
+        // PC（ドライブの一覧）では使えない操作を並べず、表示・プレビューだけにする（灰色のボタンが並ぶと分かりにくいため）
+        var editing = ViewModel.IsPc ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var b in new UIElement[] { NewFolderButton, EditSeparator, CutButton, CopyButton, PasteButton, RenameButton, DeleteButton, UndoButton, ViewSeparator, GroupButton, ToolsButton })
+            b.Visibility = editing;
         string? downloads = ShellService.KnownFolder(ShellService.QuickAccess[2].Id);
         OrganizeButton.Visibility = downloads != null && string.Equals(downloads.TrimEnd('\\'), ViewModel.CurrentPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
             ? Visibility.Visible : Visibility.Collapsed;
@@ -627,12 +631,35 @@ public sealed partial class FolderPaneView : UserControl
     MenuFlyout BuildContextMenu(FileItem? item)
     {
         var menu = new MenuFlyout();
-        void Add(string text, string glyph, Action action, string? key = null)
+        void Add(string text, string glyph, Action action, string? key = null, MenuFlyoutSubItem? sub = null)
         {
             var mi = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph } };
             if (key != null) mi.KeyboardAcceleratorTextOverride = key;
             mi.Click += (_, _) => action();
-            menu.Items.Add(mi);
+            if (sub != null) sub.Items.Add(mi);
+            else menu.Items.Add(mi);
+        }
+        MenuFlyoutSubItem Sub(string text, string glyph) => new() { Text = text, Icon = new FontIcon { Glyph = glyph } };
+        // 使える操作が 1 つなら階層を増やさず、空のまとまりは出さない。
+        void AddGroup(MenuFlyoutSubItem sub)
+        {
+            if (sub.Items.Count == 0) return;
+            if (sub.Items.Count == 1)
+            {
+                var only = sub.Items[0];
+                sub.Items.RemoveAt(0);
+                menu.Items.Add(only);
+            }
+            else menu.Items.Add(sub);
+        }
+        void AppendItems(MenuFlyoutSubItem target, MenuFlyoutSubItem source)
+        {
+            while (source.Items.Count > 0)
+            {
+                var child = source.Items[0];
+                source.Items.RemoveAt(0);
+                target.Items.Add(child);
+            }
         }
         var selected = Selected;
         var paths = selected.Where(s => !s.IsDrive).Select(s => s.FullPath).ToList();
@@ -640,36 +667,26 @@ public sealed partial class FolderPaneView : UserControl
         {
             Add("開く", "", () => OpenItem(item), "Enter");
             if (item.IsDirectory)
-            {
                 Add("新しいタブで開く", "", () => _actions.OpenInNewTab(item.FullPath));
-                Add("隣の区画で開く", "", () => _actions.OpenInAdjacentPane(ViewModel, item.FullPath));
-                Add("お気に入りに追加", "", () => _actions.AddFavorite(item.FullPath));
-                Add("ターミナルで開く", "", () => ShellService.OpenTerminal(item.FullPath));
-            }
             Add(FileKinds.IsArchive(item.Extension) ? "中身を見る（プレビュー）" : "プレビュー・詳細", "", () => _actions.TogglePreview(ViewModel), "Space");
-            if (!item.IsDrive) Add("変換・整理…", "\uE8A5", () => _ = OpenToolsAsync(paths));
-            // 画像: エクスプローラーと同じく、その場で回転・デスクトップの背景に設定
-            var images = selected.Where(s => !s.IsDirectory && ImageActions.CanRotate(s.Extension)).Select(s => s.FullPath).ToList();
-            if (images.Count > 0 && images.Count == selected.Count)
+            var open = Sub("ほかの方法で開く", "\uE8A7");
+            if (item.IsDirectory)
             {
-                Add("右に回転", "\uE7AD", () => _ = RotateAsync(images, clockwise: true));
-                Add("左に回転", "\uE7AD", () => _ = RotateAsync(images, clockwise: false));
+                Add("隣の区画で開く", "", () => _actions.OpenInAdjacentPane(ViewModel, item.FullPath), sub: open);
+                Add("ターミナルで開く", "", () => ShellService.OpenTerminal(item.FullPath), sub: open);
             }
-            if (selected.Count == 1 && !item.IsDirectory && ImageActions.CanBeWallpaper(item.Extension))
-                Add("デスクトップの背景として設定", "\uE7F4", () => _ = SetWallpaperAsync(item.FullPath));
-            if (item.IsDirectory && !item.IsDrive) menu.Items.Add(FolderColorMenu(selected.Where(s => s.IsDirectory).Select(s => s.FullPath).ToList()));
+            Add("エクスプローラーで表示", "", () => ShellService.ShowInExplorer(item.FullPath), sub: open);
+            AddGroup(open);
             if (!item.IsDrive)
             {
-                menu.Items.Add(MarksMenu(paths));
-                if (paths.Any(CloudFiles.IsInCloud)) menu.Items.Add(CloudMenu(paths));
-            }
-            menu.Items.Add(new MenuFlyoutSeparator());
-            if (!item.IsDrive)
-            {
+                menu.Items.Add(new MenuFlyoutSeparator());
                 Add("切り取り", "", () => _ = ShellService.CopyToClipboardAsync(paths, cut: true), "Ctrl+X");
                 Add("コピー", "", () => _ = ShellService.CopyToClipboardAsync(paths, cut: false), "Ctrl+C");
+                Add(selected.Count > 1 ? $"{selected.Count} 件の名前を一括で変更…" : "名前の変更", "", () => _ = RenameSelectionAsync(), "F2");
+                Add("削除（ごみ箱へ）", "", () => DeleteSelected(), "Delete");
             }
-            var copyPath = new MenuFlyoutSubItem { Text = "パスをコピー", Icon = new FontIcon { Glyph = "" } };
+            menu.Items.Add(new MenuFlyoutSeparator());
+            var copyPath = Sub("パスをコピー", "");
             void AddCopy(string text, string value, string? key = null)
             {
                 var mi = new MenuFlyoutItem { Text = text };
@@ -680,40 +697,81 @@ public sealed partial class FolderPaneView : UserControl
             AddCopy("そのまま", string.Join(Environment.NewLine, selected.Select(s => s.FullPath)), "Ctrl+Shift+C");
             AddCopy("引用符付き（\"…\"）", string.Join(Environment.NewLine, selected.Select(s => $"\"{s.FullPath}\"")));
             AddCopy("名前だけ", string.Join(Environment.NewLine, selected.Select(s => s.Name)));
-            menu.Items.Add(copyPath);
+            AddGroup(copyPath);
             if (!item.IsDrive)
             {
-                Add("最適な場所へ移動…", "", () => _ = SmartMoveAsync(selected));
-                Add(selected.Count > 1 ? $"{selected.Count} 件の名前を一括で変更…" : "名前の変更", "", () => _ = RenameSelectionAsync(), "F2");
-                if (selected.Count == 1) Add("名前の一括変更…", "", () => _ = BatchRenameAsync(paths));
-                Add("削除（ごみ箱へ）", "", () => DeleteSelected(), "Delete");
-                if (selected.Count == 2) Add("2 つを比較", "", () => _ = CompareDialog.ShowAsync(XamlRoot, selected[0].FullPath, selected[1].FullPath));
+                var archive = Sub("圧縮・展開", "\uF012");
                 // 圧縮ファイルだけを選んでいるときは出さない（ZIP をさらに ZIP にしても意味がない）
                 if (selected.Any(s => s.IsDirectory || !FileKinds.IsArchive(s.Extension)))
-                    Add("ZIP に圧縮", "", () => _ = CompressAsync(selected));
+                    Add("ZIP に圧縮", "", () => _ = CompressAsync(selected), sub: archive);
                 if (!item.IsDirectory && item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                    Add("展開（中身に合わせて場所を決める）", "", () => _ = ExtractAsync(item));
+                    Add("展開（中身に合わせて場所を決める）", "", () => _ = ExtractAsync(item), sub: archive);
+                AddGroup(archive);
             }
+
+            // 画像: エクスプローラーと同じく、その場で回転・デスクトップの背景に設定
+            var image = Sub("画像", "\uE91B");
+            var images = selected.Where(s => !s.IsDirectory && ImageActions.CanRotate(s.Extension)).Select(s => s.FullPath).ToList();
+            if (images.Count > 0 && images.Count == selected.Count)
+            {
+                Add("右に回転", "\uE7AD", () => _ = RotateAsync(images, clockwise: true), sub: image);
+                Add("左に回転", "\uE7AD", () => _ = RotateAsync(images, clockwise: false), sub: image);
+            }
+            if (selected.Count == 1 && !item.IsDirectory && ImageActions.CanBeWallpaper(item.Extension))
+                Add("デスクトップの背景として設定", "\uE7F4", () => _ = SetWallpaperAsync(item.FullPath), sub: image);
+            AddGroup(image);
+
+            if (!item.IsDrive)
+            {
+                var organize = Sub("整理", "\uE8A5");
+                Add("変換・整理…", "\uE8A5", () => _ = OpenToolsAsync(paths), sub: organize);
+                Add("最適な場所へ移動…", "", () => _ = SmartMoveAsync(selected), sub: organize);
+                if (selected.Count == 1) Add("名前の一括変更…", "", () => _ = BatchRenameAsync(paths), sub: organize);
+                if (selected.Count == 2) Add("2 つを比較", "", () => _ = CompareDialog.ShowAsync(XamlRoot, selected[0].FullPath, selected[1].FullPath), sub: organize);
+                AddGroup(organize);
+            }
+            var marks = Sub("印を付ける", "\uE734");
+            if (!item.IsDrive) AppendItems(marks, MarksMenu(paths));
+            if (item.IsDirectory)
+            {
+                if (!item.IsDrive)
+                {
+                    marks.Items.Add(new MenuFlyoutSeparator());
+                    marks.Items.Add(FolderColorMenu(selected.Where(s => s.IsDirectory).Select(s => s.FullPath).ToList()));
+                }
+                Add("お気に入りに追加", "", () => _actions.AddFavorite(item.FullPath), sub: marks);
+            }
+            AddGroup(marks);
+
+            var share = Sub("共有", "\uE72D");
+            share.Items.Add(LinkMenu.Build(item.FullPath));
+            if (!item.IsDrive && paths.Any(CloudFiles.IsInCloud))
+            {
+                share.Items.Add(new MenuFlyoutSeparator());
+                AppendItems(share, CloudMenu(paths));
+            }
+            AddGroup(share);
             menu.Items.Add(new MenuFlyoutSeparator());
-            if (!item.IsDrive) Add("その他のオプション（Windows のメニュー）", "", () => ShowWindowsMenu(item), "Shift+右クリック");
-            Add("エクスプローラーで表示", "", () => ShellService.ShowInExplorer(item.FullPath));
-            menu.Items.Add(LinkMenu.Build(item.FullPath));
             Add("プロパティ", "", () => ShellService.ShowProperties(item.FullPath), "Alt+Enter");
+            if (!item.IsDrive) Add("その他のオプション（Windows のメニュー）", "", () => ShowWindowsMenu(item), "Shift+右クリック");
         }
         else if (!ViewModel.IsPc)
         {
             Add("貼り付け", "", () => _ = PasteAsync(), "Ctrl+V");
             Add("新しいフォルダー", "", () => _ = NewFolderAsync(), "Ctrl+Shift+N");
-            Add("最新の情報に更新", "", () => _ = ViewModel.RefreshAsync(), "F5");
             if (FileOperations.Instance.Journal.NextUndo is { } undo) Add($"元に戻す: {undo.Describe()}", "", () => _ = FileOperations.Instance.UndoAsync(), "Ctrl+Z");
-            Add("その他のオプション（Windows のメニュー）", "", () => ShowWindowsMenu(null), "Shift+右クリック");
+            Add("最新の情報に更新", "", () => _ = ViewModel.RefreshAsync(), "F5");
             menu.Items.Add(new MenuFlyoutSeparator());
-            Add("このフォルダをお気に入りに追加", "", () => _actions.AddFavorite(ViewModel.CurrentPath));
-            Add("ターミナルで開く", "", () => ShellService.OpenTerminal(ViewModel.CurrentPath));
-            Add("パスをコピー", "", () => ShellService.CopyText(ViewModel.CurrentPath));
-            Add("エクスプローラーで開く", "", () => ShellService.OpenInExplorer(ViewModel.CurrentPath));
-            menu.Items.Add(LinkMenu.Build(ViewModel.CurrentPath));
+            var folder = Sub("このフォルダ", "\uE8B7");
+            Add("このフォルダをお気に入りに追加", "", () => _actions.AddFavorite(ViewModel.CurrentPath), sub: folder);
+            Add("ターミナルで開く", "", () => ShellService.OpenTerminal(ViewModel.CurrentPath), sub: folder);
+            Add("パスをコピー", "", () => ShellService.CopyText(ViewModel.CurrentPath), sub: folder);
+            Add("エクスプローラーで開く", "", () => ShellService.OpenInExplorer(ViewModel.CurrentPath), sub: folder);
+            folder.Items.Add(LinkMenu.Build(ViewModel.CurrentPath));
+            AddGroup(folder);
+            menu.Items.Add(new MenuFlyoutSeparator());
             Add("プロパティ", "", () => ShellService.ShowProperties(ViewModel.CurrentPath));
+            Add("その他のオプション（Windows のメニュー）", "", () => ShowWindowsMenu(null), "Shift+右クリック");
         }
         return menu;
     }

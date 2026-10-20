@@ -31,6 +31,12 @@ public sealed partial class SearchPaneViewModel : PaneViewModel
     string _summary = "";
 
     [ObservableProperty]
+    string _resultCount = "";
+
+    [ObservableProperty]
+    string _elapsedText = "";
+
+    [ObservableProperty]
     string? _errorText;
 
     [ObservableProperty]
@@ -72,10 +78,12 @@ public sealed partial class SearchPaneViewModel : PaneViewModel
         Query = query;
         Title = string.IsNullOrWhiteSpace(query) ? "検索" : $"検索: {query}";
         Parsed = QueryParser.Parse(query);
+        ResultCount = "";
+        ElapsedText = "";
+        Summary = "";
         if (string.IsNullOrWhiteSpace(query))
         {
             SetResults(new());
-            Summary = "";
             ErrorText = null;
             CanLoadMore = false;
             return;
@@ -88,7 +96,8 @@ public sealed partial class SearchPaneViewModel : PaneViewModel
                 var local = await Task.Run(() => SearchLocal(query, Parsed, cts.Token), cts.Token);
                 if (cts.IsCancellationRequested) return;
                 SetResults(local);
-                Summary = $"{local.Count:N0} 件" + (Parsed.ContentTerms.Count > 0 && !ContentIndexer.Instance.Enabled ? "（本文検索はオフです。設定でオンにしてください）" : "");
+                ResultCount = $"{local.Count:N0} 件";
+                Summary = Parsed.ContentTerms.Count > 0 && !ContentIndexer.Instance.Enabled ? "（本文検索はオフです。設定でオンにしてください）" : "";
                 ErrorText = Parsed.Errors.FirstOrDefault();
                 CanLoadMore = false;
                 return;
@@ -135,9 +144,11 @@ public sealed partial class SearchPaneViewModel : PaneViewModel
             }
             if (cts.IsCancellationRequested) return;
             SetResults(items);
-            Summary = concept == null ? $"{result.Total:N0} 件 ({result.ElapsedMs:F0} ms)"
+            ResultCount = concept == null ? $"{result.Total:N0} 件" : $"{items.Count:N0} 件";
+            ElapsedText = conceptOnly ? "" : $"{result.ElapsedMs:F0} ms";
+            Summary = concept == null ? ""
                 : conceptOnly ? $"種類「{concept.Name}」として {conceptHits:N0} 件"
-                : $"種類「{concept.Name}」として {conceptHits:N0} 件 ・ 名前に一致 {result.Total:N0} 件 ({result.ElapsedMs:F0} ms)";
+                : $"種類「{concept.Name}」として {conceptHits:N0} 件 ・ 名前に一致 {result.Total:N0} 件";
             if (!conceptOnly && result.Truncated) Summary += $" ・ 上位 {result.Items.Count:N0} 件を表示";
             if (contentHits > 0) Summary += $" ・ 本文に一致 {contentHits:N0} 件";
             ErrorText = queryError;

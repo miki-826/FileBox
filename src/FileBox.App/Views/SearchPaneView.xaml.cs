@@ -39,24 +39,83 @@ public sealed partial class SearchPaneView : UserControl
 
     // ---------------------------------------------------------------- 絞り込み・並べ替え
 
+    void SearchPane_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) > 0.5) RenderFacets();
+    }
+
     void RenderFacets()
     {
-        FacetPanel.Children.Clear();
-        string? lastGroup = null;
-        foreach (var facet in ViewModel.Facets)
+        var groups = ViewModel.Facets.GroupBy(f => f.Group).ToArray();
+        var visible = groups.Select(g => Math.Min(g.Key == "種類" ? 5 : 1, g.Count())).ToArray();
+        FacetPanel.Visibility = groups.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        double available = Math.Max(0, ActualWidth - FacetPanel.Margin.Left - FacetPanel.Margin.Right);
+        while (true)
         {
-            if (facet.Group != lastGroup)
+            RenderFacetGroups(groups, visible);
+            double width = Math.Max(0, groups.Length - 1) * FacetPanel.Spacing;
+            foreach (var child in FacetPanel.Children)
             {
-                FacetPanel.Children.Add(new TextBlock { Text = facet.Group, FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(lastGroup == null ? 0 : 8, 0, 2, 0), Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] });
-                lastGroup = facet.Group;
+                child.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+                width += child.DesiredSize.Width;
             }
-            var chip = new Button { Content = $"{facet.Label} {facet.Count:N0}", FontSize = 12, Padding = new Thickness(10, 3, 10, 3), CornerRadius = new CornerRadius(14), MinHeight = 28 };
-            ToolTipService.SetToolTip(chip, "この条件で絞り込む");
-            chip.Click += (_, _) => ApplyQuery(SearchFacets.Apply(ViewModel.Query, facet));
-            FacetPanel.Children.Add(chip);
+            if (ActualWidth <= 0 || width <= available) return;
+
+            // 幅が足りない分だけメニューへ移す。狭い区画でも全候補を選べる。
+            int reduce = Array.FindIndex(visible, n => n > 1);
+            if (reduce < 0) reduce = Array.FindLastIndex(visible, n => n > 0);
+            if (reduce >= 0) { visible[reduce]--; continue; }
+            break;
         }
-        FacetPanel.Visibility = ViewModel.Facets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        FacetPanel.Children.Clear();
+        var menu = new MenuFlyout();
+        foreach (var group in groups)
+        {
+            var sub = new MenuFlyoutSubItem { Text = Text.T(group.Key) };
+            foreach (var facet in group) sub.Items.Add(FacetMenuItem(facet));
+            menu.Items.Add(sub);
+        }
+        FacetPanel.Children.Add(new DropDownButton { Content = Text.T("絞り込み"), Flyout = menu, FontSize = 12, MinHeight = 28 });
+    }
+
+    void RenderFacetGroups(IGrouping<string, Facet>[] groups, int[] visible)
+    {
+        FacetPanel.Children.Clear();
+        for (int i = 0; i < groups.Length; i++)
+        {
+            var group = groups[i];
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            if (visible[i] > 0)
+                panel.Children.Add(new TextBlock { Text = Text.T(group.Key), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] });
+            foreach (var facet in group.Take(visible[i]))
+            {
+                var chip = new Button { Content = FacetLabel(facet), FontSize = 12, Padding = new Thickness(10, 3, 10, 3), CornerRadius = new CornerRadius(14), MinHeight = 28 };
+                ToolTipService.SetToolTip(chip, Text.T("この条件で絞り込む"));
+                chip.Click += (_, _) => ApplyQuery(SearchFacets.Apply(ViewModel.Query, facet));
+                panel.Children.Add(chip);
+            }
+            if (group.Count() > visible[i])
+            {
+                var menu = new MenuFlyout();
+                foreach (var facet in group.Skip(visible[i])) menu.Items.Add(FacetMenuItem(facet));
+                var more = new DropDownButton { Content = Text.T(visible[i] > 0 ? "その他" : group.Key), Flyout = menu,
+                    FontSize = 12, Padding = new Thickness(10, 3, 10, 3), CornerRadius = new CornerRadius(14), MinHeight = 28 };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(more, Text.T(group.Key) + ": " + Text.T("その他"));
+                panel.Children.Add(more);
+            }
+            FacetPanel.Children.Add(panel);
+        }
+    }
+
+    static string FacetLabel(Facet facet) => $"{Text.T(facet.Label)} {facet.Count:N0}";
+
+    MenuFlyoutItem FacetMenuItem(Facet facet)
+    {
+        var item = new MenuFlyoutItem { Text = FacetLabel(facet) };
+        item.Click += (_, _) => ApplyQuery(SearchFacets.Apply(ViewModel.Query, facet));
+        return item;
     }
 
     /// <summary>入力中の検索から出た区画なら検索欄を、Enter で開いたタブならこの区画だけを書き換える。</summary>
@@ -84,6 +143,19 @@ public sealed partial class SearchPaneView : UserControl
     // ---------------------------------------------------------------- 狭い区画ではサイズ・日時の列を隠して名前を広く見せる
 
     bool _narrow;
+
+    public static string SearchSize(bool isDirectory, string humanSize) => isDirectory ? "" : humanSize;
+
+    void List_LayoutUpdated(object? sender, object e)
+    {
+        // 選択欄やスクロールバーを含め、実際の行の表示位置に見出しを合わせる。
+        if (List.ItemsPanelRoot?.Children.OfType<ListViewItem>().FirstOrDefault() is not { ContentTemplateRoot: Grid root } || root.ActualWidth <= 0) return;
+        double left = root.TransformToVisual(List).TransformPoint(new Windows.Foundation.Point()).X;
+        double right = Math.Max(0, List.ActualWidth - left - root.ActualWidth);
+        var margin = new Thickness(List.Margin.Left + left, 4, List.Margin.Right + right, 0);
+        if (Math.Abs(HeaderGrid.Margin.Left - margin.Left) > 0.5 || Math.Abs(HeaderGrid.Margin.Right - margin.Right) > 0.5)
+            HeaderGrid.Margin = margin;
+    }
 
     void List_SizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -211,18 +283,20 @@ public sealed partial class SearchPaneView : UserControl
             menu.Items.Add(mi);
         }
         Add("開く", "", () => Open(item));
-        Add("ファイルの場所を開く", "", () => _actions.RevealInFolderPane(ViewModel, item.FullPath));
-        menu.Items.Add(LinkMenu.Build(item.FullPath));
         Add("新しいタブで場所を開く", "", () => _actions.OpenInNewTab(item.IsDirectory ? item.FullPath : item.Location));
         Add("プレビュー", "", () => _actions.TogglePreview(ViewModel));
+        Add("ファイルの場所を開く", "", () => _actions.RevealInFolderPane(ViewModel, item.FullPath));
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("コピー", "", () => _ = ShellService.CopyToClipboardAsync(paths, cut: false));
+        Add("削除（ごみ箱へ）", "", () => { if (FileOperations.Instance.Recycle(paths) > 0) _ = ViewModel.RunAsync(ViewModel.Query); });
+        menu.Items.Add(new MenuFlyoutSeparator());
         Add("パスをコピー", "", () => ShellService.CopyText(string.Join(Environment.NewLine, paths)));
         Add("パスを引用符付きでコピー", "", () => ShellService.CopyText(string.Join(Environment.NewLine, paths.Select(p => $"\"{p}\""))));
         bool starred = paths.All(UserMarks.IsStarred);
         Add(starred ? "星を外す" : "星を付ける", starred ? "" : "", () => UserMarks.SetStar(paths, !starred));
         if (selected.Count == 2) Add("2 つを比較", "", () => _ = CompareDialog.ShowAsync(XamlRoot, selected[0].FullPath, selected[1].FullPath));
-        Add("削除（ごみ箱へ）", "", () => { if (FileOperations.Instance.Recycle(paths) > 0) _ = ViewModel.RunAsync(ViewModel.Query); });
+        menu.Items.Add(LinkMenu.Build(item.FullPath));
+        menu.Items.Add(new MenuFlyoutSeparator());
         Add("プロパティ", "", () => ShellService.ShowProperties(item.FullPath));
         return menu;
     }

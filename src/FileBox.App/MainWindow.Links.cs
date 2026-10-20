@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace FileBox.App;
 
-/// <summary>filebox:// リンクを開く（02_機能設計 §4）と、リンク転送口・Win+E の起動。</summary>
+/// <summary>filebox:// リンクを開く（02_機能設計 §4）と、リンク転送口。</summary>
 public sealed partial class MainWindow
 {
     LocalLinkServer? _linkServer;
@@ -13,12 +13,7 @@ public sealed partial class MainWindow
     void InitializeLinks()
     {
         LinkService.Initialize(_store);
-        ExplorerIntegration.Initialize(_store, onWinE: () =>
-        {
-            OpenInNewTab("");
-            Activate();
-            BringToFront();
-        });
+        ExplorerIntegration.Initialize(_store);
         RestartLinkServer();
     }
 

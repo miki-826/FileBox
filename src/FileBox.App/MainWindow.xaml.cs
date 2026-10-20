@@ -45,6 +45,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         _searchTimer.IsRepeating = false;
         _searchTimer.Tick += async (_, _) => await RefreshSearchSuggestionsAsync();
         SearchBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(SearchBox_KeyDown), true);
+        // 区画が1つのときの「分割」はタブの右端に置く（区画の見出しは複数のときだけ出す）
+        Tabs.TabStripFooter = PaneHost.SplitButton(orientation => { if (CurrentTab is { } t) SplitPane(t.Model.ActivePane, orientation); });
 
         _statusTimer = DispatcherQueue.CreateTimer();
         _statusTimer.Interval = TimeSpan.FromSeconds(2);
@@ -380,8 +382,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         LoadSidebar();
     }
 
-    /// <summary>コマンドライン引数・2つ目の起動から渡されたパスを開く。</summary>
-    public void OpenFromArguments(IEnumerable<string> args)
+    /// <summary>コマンドライン引数・2つ目の起動から渡されたパスを開く。redirected は起動中の FileBox へ渡された場合。</summary>
+    public void OpenFromArguments(IEnumerable<string> args, bool redirected = false)
     {
         var arguments = args.ToList();
         if (arguments.Contains("--tools")) { QueueTools(arguments.SkipWhile(a => a != "--tools").Skip(1)); return; }
@@ -390,6 +392,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
             if (arg == "--inbox") { OpenInbox(); continue; }
             if (arg == "--capacity") { OpenCapacity(); continue; }
             if (arg == "--admin") { OpenAdmin(); continue; }
+            // Win + E・タスクバーのエクスプローラー: 起動中なら新しいタブで「PC」を開く（起動直後は前回のタブをそのまま出す）
+            if (arg == "--home") { if (redirected) OpenInNewTab(""); continue; }
             if (FileBoxUri.IsFileBoxUri(arg)) { HandleLink(arg); continue; }
             if (ShellLocation(arg) is { } shell) { OpenShellPane(shell); continue; }
             string? path = ShellService.ResolveAddress(arg);
@@ -811,7 +815,6 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         GlobalHotkey.Instance.Dispose();
         ContentIndexer.Instance.Dispose();
         SaveDialogWatcher.Instance.Dispose();
-        ExplorerIntegration.Instance.Dispose();
         try { _store.SaveWorkspace(UserStore.SessionWorkspace, SerializeLayout()); }
         catch (Exception) { }
         _statusTimer.Stop();

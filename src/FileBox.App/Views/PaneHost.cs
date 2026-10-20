@@ -132,23 +132,7 @@ public sealed class PaneHost : Grid
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(title);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 0, Tag = "buttons" };
-        var splitMenu = new MenuFlyout();
-        void AddSplit(string label, Orientation orientation)
-        {
-            var item = new MenuFlyoutItem { Text = label };
-            item.Click += (_, _) => _actions.SplitPane(pane, orientation);
-            splitMenu.Items.Add(item);
-        }
-        AddSplit("左右に分割 (Ctrl+\\)", Orientation.Horizontal);
-        AddSplit("上下に分割 (Ctrl+Shift+\\)", Orientation.Vertical);
-        var splitContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        splitContent.Children.Add(SplitIcon(vertical: false));
-        splitContent.Children.Add(new TextBlock { Text = "分割", FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
-        var splitButton = new DropDownButton { Content = splitContent, Flyout = splitMenu,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0),
-            Padding = new Thickness(8, 4, 8, 4), MinHeight = 32 };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(splitButton, "区画を分割");
-        buttons.Children.Add(splitButton);
+        buttons.Children.Add(SplitButton(orientation => _actions.SplitPane(pane, orientation)));
         buttons.Children.Add(SmallButton(new FontIcon { Glyph = "", FontSize = 14 }, "この区画を閉じる", () => _actions.ClosePane(pane)));
         SetColumn(buttons, 1);
         header.Children.Add(buttons);
@@ -176,9 +160,34 @@ public sealed class PaneHost : Grid
         return frame;
     }
 
+    /// <summary>「分割」のボタン（左右・上下）。区画の見出しと、区画が1つのときのタブの右端で使う。</summary>
+    public static DropDownButton SplitButton(Action<Orientation> split)
+    {
+        var splitMenu = new MenuFlyout();
+        void AddSplit(string label, Orientation orientation)
+        {
+            var item = new MenuFlyoutItem { Text = label };
+            item.Click += (_, _) => split(orientation);
+            splitMenu.Items.Add(item);
+        }
+        AddSplit("左右に分割 (Ctrl+\\)", Orientation.Horizontal);
+        AddSplit("上下に分割 (Ctrl+Shift+\\)", Orientation.Vertical);
+        var splitContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        splitContent.Children.Add(SplitIcon(vertical: false));
+        splitContent.Children.Add(new TextBlock { Text = "分割", FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+        var splitButton = new DropDownButton { Content = splitContent, Flyout = splitMenu,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0),
+            Padding = new Thickness(8, 4, 8, 4), MinHeight = 32 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(splitButton, "区画を分割");
+        return splitButton;
+    }
+
     void UpdateFrameButtons(Border frame)
     {
-        var buttons = ((Grid)((Grid)frame.Child).Children[0]).Children.OfType<StackPanel>().First();
+        // 区画が1つのときは見出し（タブ・アドレスバーと同じ名前）を出さず一覧を広く使う。分割はタブの右端から
+        var header = (Grid)((Grid)frame.Child).Children[0];
+        header.Visibility = _tab.PaneCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+        var buttons = header.Children.OfType<StackPanel>().First();
         bool canSplit = _tab.CanSplit;
         buttons.Children[0].Visibility = canSplit ? Visibility.Visible : Visibility.Collapsed;
         buttons.Children[1].Visibility = _tab.PaneCount > 1 ? Visibility.Visible : Visibility.Collapsed;

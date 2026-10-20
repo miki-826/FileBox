@@ -28,19 +28,21 @@ public sealed class FileItem : ObservableObject
         OnPropertyChanged(nameof(HumanSize));
         OnPropertyChanged(nameof(SizeDescription));
     }
-    public string SizeDescription => IsDirectory && !IsDrive
+    public string SizeDescription => IsDrive ? DriveDetailText ?? "" : IsDirectory
         ? _folderBytes is long bytes ? $"配下のファイル合計: {bytes:N0} バイト" + (_folderSizePartial ? "（集計途中または一部取得不可）" : "（索引または読み取れたファイルに基づく）") : _folderSizeState
         : SizeText;
 
     /// <summary>ドライブの使用率（0〜1）とラベル。</summary>
     public double DriveUsage { get; init; }
     public string? DriveInfoText { get; init; }
+    public string? DriveDetailText { get; init; }
 
     public string Glyph => IsDrive ? "" : IsDirectory ? "" : FileKinds.Glyph(Extension);
     public string Extension => IsDirectory ? "" : Path.GetExtension(Name).ToLowerInvariant();
     public string TypeText => IsDrive ? "ドライブ" : IsDirectory ? "ファイル フォルダー" : Extension.Length > 1 ? $"{Extension[1..].ToUpperInvariant()} ファイル" : "ファイル";
+    // まだ集計していないフォルダは、エクスプローラーと同じく空欄にする（理由はツールチップの SizeDescription に出す）
     public string SizeText => IsDrive ? DriveInfoText ?? "" : IsDirectory
-        ? _folderBytes is long bytes ? _folderSizePartial && bytes == 0 ? "未集計" : (_folderSizePartial ? "約 " : "") + Format.HumanSize(bytes) : _folderSizeState
+        ? _folderBytes is long bytes ? _folderSizePartial && bytes == 0 ? "" : (_folderSizePartial ? "約 " : "") + Format.HumanSize(bytes) : _folderSizeState == "未集計" ? "" : _folderSizeState
         : Format.HumanSize(Size);
     public string HumanSize => IsDirectory ? SizeText : Format.HumanSize(Size);
     public string ModifiedText => Modified?.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture) ?? "";

@@ -82,6 +82,12 @@
                 <Setter Property="MinHeight" Value="32" />
                 <Setter Property="FontSize" Value="12" />
             </Style>
+            <!-- 検索欄の入力部分。アドレスバーと同じ高さ・角丸にし、文字を縦の中央に置く -->
+            <Style x:Key="SearchTextBox" TargetType="TextBox" BasedOn="{StaticResource AutoSuggestBoxTextBoxStyle}">
+                <Setter Property="MinHeight" Value="40" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="12,0,6,0" />
+            </Style>
         </Grid.Resources>
 
         <!-- 上のバー: 移動・場所・検索。詳細条件は必要なときだけ開く。 -->
@@ -127,7 +133,9 @@
             </Grid>
 
             <!-- 検索: アドレスバーの右（エクスプローラーと同じ位置）。何を検索するかを入力欄の中に表示する -->
-            <AutoSuggestBox x:Name="SearchBox" Grid.Column="3" MinWidth="180" MinHeight="40" CornerRadius="8" VerticalAlignment="Center"
+            <!-- 高さは中の入力欄で決める（外側だけ高くすると文字が上に寄るため）。縦の位置は本体の VerticalContentAlignment が入力欄へ渡る -->
+            <AutoSuggestBox x:Name="SearchBox" Grid.Column="3" MinWidth="180" VerticalAlignment="Center" VerticalContentAlignment="Center" CornerRadius="8"
+                            TextBoxStyle="{StaticResource SearchTextBox}"
                             AutomationProperties.Name="ファイルとフォルダを検索"
                             PlaceholderText="PC 全体を検索（Ctrl+F）"
                             QueryIcon="Find"
@@ -311,18 +319,18 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- 下: 容量・管理・設定（アイコン付きで同じ形に揃える） -->
+            <!-- 下: 容量・管理・設定（アイコン付きで同じ形に揃える）。読み上げの名前は見えている文字と同じにし、説明はツールチップに出す -->
             <StackPanel Grid.Row="1" Spacing="2" Padding="8,8,12,0"
                         BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
                     <Button Style="{StaticResource SidebarFooterButton}" Click="Capacity_Click"
-                            AutomationProperties.Name="容量（フォルダ別の内訳・大きいファイル）" ToolTipService.ToolTip="容量（フォルダ別の内訳・大きいファイル）">
+                            AutomationProperties.Name="容量を確認" ToolTipService.ToolTip="容量（フォルダ別の内訳・大きいファイル）">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xEDA2;" FontSize="18" Foreground="#30A46C" />
                             <TextBlock Text="容量を確認" FontSize="14" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                     <Button x:Name="AdminButton" Style="{StaticResource SidebarFooterButton}" Click="Admin_Click" Visibility="Collapsed"
-                            AutomationProperties.Name="ユーザー・権限・監査ログ（管理者）" ToolTipService.ToolTip="ユーザー・権限・監査ログ（管理者）">
+                            AutomationProperties.Name="ユーザーと権限" ToolTipService.ToolTip="ユーザー・権限・監査ログ（管理者）">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xE7EF;" FontSize="18" Foreground="#8E4EC6" />
                             <TextBlock Text="ユーザーと権限" FontSize="14" VerticalAlignment="Center" />
@@ -330,7 +338,7 @@
                     </Button>
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="2">
                         <Button x:Name="SettingsButton" Style="{StaticResource SidebarFooterButton}" Click="Settings_Click"
-                                AutomationProperties.Name="エクスプローラー置き換え・表示・言語・データ" ToolTipService.ToolTip="エクスプローラー置き換え・表示・言語・データ">
+                                AutomationProperties.Name="設定" ToolTipService.ToolTip="エクスプローラー置き換え・表示・言語・データ">
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <FontIcon Glyph="&#xE713;" FontSize="18" Foreground="#5B6B7F" />
                                 <TextBlock Text="設定" FontSize="14" VerticalAlignment="Center" />

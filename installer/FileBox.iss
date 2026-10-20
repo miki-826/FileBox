@@ -59,6 +59,8 @@ Name: "{autodesktop}\FileBox"; Filename: "{app}\FileBox.exe"; Tasks: desktopicon
 Filename: "{app}\FileBox.exe"; Description: "FileBox を起動する"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+; エクスプローラーの置き換え（フォルダを開く・Win + E）を変更前の値に戻す。消すと開けなくなるので、ファイルより先に行う
+Filename: "{app}\FileBox.exe"; Parameters: "--unregister-shell"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterShell"
 ; 実行中だとファイルを消せないため、アンインストール前に終了させる
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM FileBox.exe /F"; Flags: runhidden; RunOnceId: "StopApp"
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM FileBox.Indexer.exe /F"; Flags: runhidden; RunOnceId: "StopIndexer"
