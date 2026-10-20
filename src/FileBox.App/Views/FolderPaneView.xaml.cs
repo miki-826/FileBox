@@ -597,6 +597,7 @@ public sealed partial class FolderPaneView : UserControl
                 Add("ターミナルで開く", "", () => ShellService.OpenTerminal(item.FullPath));
             }
             Add(FileKinds.IsArchive(item.Extension) ? "中身を見る（プレビュー）" : "プレビュー・詳細", "", () => _actions.TogglePreview(ViewModel), "Space");
+            if (!item.IsDrive) Add("変換・整理…", "\uE8A5", () => _ = OpenToolsAsync(paths));
             if (item.IsDirectory && !item.IsDrive) menu.Items.Add(FolderColorMenu(selected.Where(s => s.IsDirectory).Select(s => s.FullPath).ToList()));
             if (!item.IsDrive)
             {
@@ -656,6 +657,18 @@ public sealed partial class FolderPaneView : UserControl
             Add("プロパティ", "", () => ShellService.ShowProperties(ViewModel.CurrentPath));
         }
         return menu;
+    }
+
+    void Tools_Click(object sender, RoutedEventArgs e) => _ = OpenToolsAsync(Selected.Where(s => !s.IsDrive).Select(s => s.FullPath).ToList());
+
+    async Task OpenToolsAsync(IReadOnlyList<string> paths)
+    {
+        try
+        {
+            await ConversionDialog.ShowAsync(XamlRoot, paths.Count > 0 ? paths : Directory.Exists(ViewModel.CurrentPath) ? new[] { ViewModel.CurrentPath } : Array.Empty<string>());
+            await ViewModel.RefreshAsync();
+        }
+        catch (Exception ex) { App.Window?.ShowInfo(ex.Message, InfoBarSeverity.Error); }
     }
 
     /// <summary>フォルダの色（Teams のように自分で選べる。FileBox の中だけの表示で、Windows 側は変えない）。</summary>

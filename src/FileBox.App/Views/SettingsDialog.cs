@@ -42,6 +42,7 @@ public static class SettingsDialog
         var winE = Toggle("Win + E で FileBox を開く", explorer.WinEEnabled, "FileBox が起動している間だけ有効です。");
         winE.Toggled += (_, _) => explorer.SetWinE(winE.IsOn);
         panel.Children.Add(winE);
+        panel.Children.Add(ConversionSettings.Build(store));
 
         // ---- 保存先の提案（§1）
         panel.Children.Add(Header("保存先の提案"));
@@ -299,6 +300,13 @@ public static class SettingsDialog
                 row.Buttons.Children.Add(SmallButton("", "オフにする", () => { GlobalHotkey.Instance.Set(false, GlobalHotkey.Instance.ChoiceIndex); Render(); refresh(); }));
                 body.Children.Add(row.Grid);
             }
+            if (ConversionContextMenu.Enabled(store))
+            {
+                count++;
+                var row = Row("エクスプローラーの変換・整理メニュー", "現在のユーザーだけに登録しています");
+                row.Buttons.Children.Add(SmallButton("", "登録を外す", () => { ConversionContextMenu.Apply(store, false); Render(); }));
+                body.Children.Add(row.Grid);
+            }
             if (LinkService.IsProtocolRegistered())
             {
                 count++;
@@ -336,6 +344,7 @@ public static class SettingsDialog
                         if (explorer2.IsEnabled || explorer2.IsActiveInRegistry()) explorer2.Disable();
                         if (explorer2.WinEEnabled) explorer2.SetWinE(false);
                         if (GlobalHotkey.Instance.Enabled) GlobalHotkey.Instance.Set(false, GlobalHotkey.Instance.ChoiceIndex);
+                        if (ConversionContextMenu.Enabled(store)) ConversionContextMenu.Apply(store, false);
                         foreach (var drive in NetworkDrives.Mapped(store).Keys.ToList()) NetworkDrives.Disconnect(store, drive);
                     }
                     catch (Exception ex) { App.ShowError("元に戻せませんでした", ex); }

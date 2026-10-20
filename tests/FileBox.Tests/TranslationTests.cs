@@ -25,6 +25,9 @@ public sealed class TranslationTests
         "src/FileBox.Core/Files/FriendlyError.cs", "src/FileBox.Core/Files/BatchRename.cs", "src/FileBox.Core/Files/NameRule.cs",
         "src/FileBox.Core/Files/CleanupCandidates.cs", "src/FileBox.Core/Files/OperationJournal.cs", "src/FileBox.Core/Files/DateGroup.cs",
         "src/FileBox.Core/Search/SearchFacets.cs", "src/FileBox.Core/Search/QueryHints.cs", "src/FileBox.Core/Settings/SettingsPackage.cs",
+        "src/FileBox.Core/Tools/ToolCatalog.cs", "src/FileBox.Core/Tools/DataConversion.cs", "src/FileBox.Core/Tools/MediaCommands.cs",
+        "src/FileBox.Core/Tools/SafeOutput.cs", "src/FileBox.Core/Tools/SafeArchives.cs", "src/FileBox.Core/Tools/ExternalProcess.cs",
+        "src/FileBox.Core/Tools/FolderInspection.cs", "src/FileBox.Tools/ToolEngine.cs",
     };
 
     [Fact]

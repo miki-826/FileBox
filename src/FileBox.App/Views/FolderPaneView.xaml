@@ -150,6 +150,7 @@
             <AppBarToggleButton x:Name="GroupButton" Label="日付でまとめる" Icon="Calendar" Click="Group_Click" />
             <AppBarButton x:Name="OrganizeButton" Label="整理の提案" Icon="MoveToFolder" Click="Organize_Click" Visibility="Collapsed" ToolTipService.ToolTip="ダウンロードのファイルに保存先を提案" />
             <AppBarButton Label="プレビュー" Icon="Preview" Click="Preview_Click" ToolTipService.ToolTip="プレビューと詳細 (Space)" />
+            <AppBarButton Label="変換・整理" Icon="Edit" Click="Tools_Click" />
         </CommandBar>
 
         <!-- 列ヘッダー（クリックで並べ替え・右クリックで列の追加） -->

@@ -122,6 +122,27 @@ public sealed class PolicyService
         catch (Exception) { return 0; }
     }
 
+    public bool CanAddOutput(string destination, long bytes, string action)
+    {
+        if (bytes < 0) return false;
+        if (!Managed) return true;
+        var s = _session!;
+        var zones = s.Zones.Select(z => new QuotaZone(z.Id, z.Path, z.LimitBytes, z.Scope, z.UserId, z.RoleId, z.WarnPercent, z.UsedBytes)).ToList();
+        if (s.Zones.Any(z => z.UsedBytes < 0 && PolicyEvaluator.Applies(z.Path, PolicyEvaluator.Normalize(destination))))
+        {
+            App.Window?.ShowInfo("容量を確認できないため保存できません。索引の集計完了後に再実行してください", InfoBarSeverity.Warning);
+            return false;
+        }
+        var violation = QuotaCheck.FindViolation(zones, destination, new[] { (destination, bytes) }, false);
+        if (violation != null || s.UserQuotaBytes is long limit && bytes > limit - s.UserUsedBytes)
+        {
+            Audit(action, null, destination, bytes, "quota_exceeded");
+            App.Window?.ShowInfo("変換結果が容量の上限を超えるため保存できません", InfoBarSeverity.Warning);
+            return false;
+        }
+        return true;
+    }
+
     static async Task ShowQuotaDialogAsync(string title, string message, string? zonePath)
     {
         if (App.Window?.Content?.XamlRoot is not { } root) return;

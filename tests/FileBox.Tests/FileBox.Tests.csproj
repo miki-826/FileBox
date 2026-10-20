@@ -15,4 +15,7 @@
     <ProjectReference Include="..\..\src\FileBox.Contracts\FileBox.Contracts.csproj" />
     <ProjectReference Include="..\..\src\FileBox.Data\FileBox.Data.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FileBox.Tools\FileBox.Tools.csproj" />
+  </ItemGroup>
 </Project>

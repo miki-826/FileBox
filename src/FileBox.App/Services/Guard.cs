@@ -36,4 +36,12 @@ public static class Guard
         Policy.Audit(action, null, path, null);
         Policy.RecordOwners(new[] { path });
     }
+
+    /// <summary>変換結果の実サイズで保存直前に確認する。処理画面の上に別のダイアログを重ねない。</summary>
+    public static async Task<bool> OutputAsync(string destination, long bytes, string action)
+    {
+        await Policy.RefreshAsync();
+        if (!Can(Permission.Create, destination, action)) return false;
+        return Policy.CanAddOutput(destination, bytes, action);
+    }
 }

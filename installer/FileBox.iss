@@ -63,4 +63,9 @@ Filename: "{app}\FileBox.exe"; Description: "FileBox を起動する"; Flags: no
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM FileBox.exe /F"; Flags: runhidden; RunOnceId: "StopApp"
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM FileBox.Indexer.exe /F"; Flags: runhidden; RunOnceId: "StopIndexer"
 
+[Registry]
+; 本体の設定で任意登録した独自動詞だけを解除する。
+Root: HKCU; Subkey: "Software\Classes\*\shell\FileBox.Tools"; Flags: uninsdeletekey dontcreatekey
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\FileBox.Tools"; Flags: uninsdeletekey dontcreatekey
+
 ; ユーザー設定（%LOCALAPPDATA%\FileBox）と共有データ（%ProgramData%\FileBox）はアンインストールで消さない

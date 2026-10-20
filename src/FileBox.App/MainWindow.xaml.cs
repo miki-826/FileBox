@@ -63,6 +63,11 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         InboxService.Instance.CountChanged += UpdateInboxEntry;
         InitializeLinks();
         SettingsDialog.Store = _store;
+        if (ConversionContextMenu.Enabled(_store))
+        {
+            try { ConversionContextMenu.Apply(_store, true); }
+            catch (Exception ex) { ShowInfo(ex.Message, InfoBarSeverity.Warning); }
+        }
         InitializePolicy();
         SaveDialogWatcher.Initialize(_store, DispatcherQueue);
         RegisterAccelerators();
@@ -378,6 +383,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
     /// <summary>コマンドライン引数・2つ目の起動から渡されたパスを開く。</summary>
     public void OpenFromArguments(IEnumerable<string> args)
     {
+        var arguments = args.ToList();
+        if (arguments.Contains("--tools")) { QueueTools(arguments.SkipWhile(a => a != "--tools").Skip(1)); return; }
         foreach (var arg in args)
         {
             if (arg == "--inbox") { OpenInbox(); continue; }

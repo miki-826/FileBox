@@ -41,6 +41,7 @@ public sealed record SettingsPackage
     /// <summary>持ち運ばない設定（Windows 側を変えるもの・秘密・この PC だけの状態）。</summary>
     public static bool IsPortable(string key) =>
         !(key.StartsWith("explorer.", StringComparison.Ordinal) || key.StartsWith("hotkey.", StringComparison.Ordinal) ||
+          key.StartsWith("tools.engine.", StringComparison.Ordinal) || key == "tools.contextMenu" ||
           key is "links.httpSecret" or "links.httpPort" or "inbox.seeded" or "onboarding.done" or "update.lastChecked");
 
     public string ToJson() => JsonSerializer.Serialize(this with { Settings = Settings.Where(kv => IsPortable(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value) }, Options);

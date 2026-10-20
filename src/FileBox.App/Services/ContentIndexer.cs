@@ -199,7 +199,7 @@ static class IFilterReader
 
     public static bool Supports(string ext) => Extensions.Contains(ext);
 
-    public static string? Read(string path, int maxChars)
+    public static string? Read(string path, int maxChars, CancellationToken cancellationToken = default)
     {
         IFilter? filter = null;
         try
@@ -212,11 +212,13 @@ static class IFilterReader
             var buffer = new char[4096];
             while (sb.Length < maxChars)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 int hr = filter.GetChunk(out var chunk);
                 if (hr != 0) break;   // FILTER_E_END_OF_CHUNKS など
                 if ((chunk.flags & 1) == 0) continue;   // CHUNK_TEXT 以外
                 while (sb.Length < maxChars)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     uint size = (uint)buffer.Length;
                     hr = filter.GetText(ref size, buffer);
                     if (size > 0) sb.Append(buffer, 0, (int)size);
@@ -226,6 +228,7 @@ static class IFilterReader
             }
             return sb.ToString();
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception) { return null; }
         finally { if (filter != null) Marshal.ReleaseComObject(filter); }
     }

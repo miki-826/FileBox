@@ -21,13 +21,13 @@ public static class DuplicateFinder
     const FileAttributes Skip = FileAttributes.ReparsePoint | FileAttributes.Offline | (FileAttributes)0x00400000; // RECALL_ON_DATA_ACCESS
 
     public static Task<IReadOnlyList<DuplicateGroup>> FindAsync(IReadOnlyList<string> roots, long minSize = 1,
-        IProgress<DuplicateProgress>? progress = null, CancellationToken ct = default) => Task.Run(() =>
+        IProgress<DuplicateProgress>? progress = null, CancellationToken ct = default, Func<string, bool>? canRead = null) => Task.Run(() =>
     {
         var bySize = new Dictionary<long, List<string>>();
         int scanned = 0;
         foreach (var file in Enumerate(roots, ct))
         {
-            if (file.Length < minSize) continue;
+            if (file.Length < minSize || !(canRead?.Invoke(file.FullName) ?? true)) continue;
             if (!bySize.TryGetValue(file.Length, out var list)) bySize[file.Length] = list = new();
             list.Add(file.FullName);
             if (++scanned % 2000 == 0) progress?.Report(new("ファイルを数えています", scanned, 0));

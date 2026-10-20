@@ -16,6 +16,7 @@ try {
     $requiredFiles = @(
         'FileBox.exe', 'FileBox.dll', 'FileBox.deps.json', 'FileBox.runtimeconfig.json',
         'Microsoft.UI.Xaml.dll', 'resources.pri', 'Assets/Strings/en.json',
+        'FileBox.Tools.dll', 'PdfSharp.dll', 'System.Security.Cryptography.Pkcs.dll', 'THIRD-PARTY-NOTICES.txt',
         'indexer/FileBox.Indexer.exe', 'indexer/FileBox.Indexer.dll',
         'indexer/FileBox.Indexer.deps.json', 'indexer/FileBox.Indexer.runtimeconfig.json'
         'hostfxr.dll', 'coreclr.dll', 'indexer/hostfxr.dll', 'indexer/coreclr.dll'
@@ -41,6 +42,8 @@ FileBox 開発プレビュー（ビルド元: $revision）
 
 初回起動時に検索用インデックスを作成します。
 エクスプローラー置き換えは既定でオフです。
+ファイルの変換・整理は一覧の操作バーから開きます。外部エンジンは設定で指定してください。
+FFmpeg・ImageMagick・7-Zip・Java/CFR は同梱していません。PDF 結合・Windows 標準の OCR と PDF 画像化・データ変換は別途のエンジン指定なしで利用できます。
 更新するときは FileBox と FileBox.Indexer を終了してから展開してください。
 "@
     Set-Content -LiteralPath (Join-Path $appOutput 'PREVIEW.txt') -Value $notice -Encoding utf8
