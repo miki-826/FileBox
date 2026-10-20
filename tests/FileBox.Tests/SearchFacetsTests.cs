@@ -81,7 +81,7 @@ public sealed class SearchFacetsTests
         Assert.Equal(10, kinds.Length);
         Assert.Equal("画像", kinds[0].Label);
         Assert.Equal(3, kinds[0].Count);
-        Assert.Equal(kinds, SearchFacets.Build(items.Reverse().ToArray(), Today).Where(f => f.Group == "種類"));
+        Assert.Equal(kinds, SearchFacets.Build(Enumerable.Reverse(items).ToArray(), Today).Where(f => f.Group == "種類"));
         Assert.Equal(kinds.Take(5), SearchFacets.Build(items, Today, maxKinds: 5).Where(f => f.Group == "種類"));
         Assert.Contains(kinds, f => f.Key == "folder" && SearchFacets.Apply("AGENTS", f) == "folder: AGENTS");
     }
