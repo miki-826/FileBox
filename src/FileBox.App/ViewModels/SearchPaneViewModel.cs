@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FileBox.App.Models;
 using FileBox.App.Services;
+using FileBox.Contracts;
 using FileBox.Core.Search;
 
 namespace FileBox.App.ViewModels;
@@ -92,13 +93,17 @@ public sealed partial class SearchPaneViewModel : PaneViewModel
                 CanLoadMore = false;
                 return;
             }
-            var result = await IndexClient.Instance.SearchAsync(query, _limit, cts.Token);
+            // 「ゲーム」「メモ」など種類の語だけなら、名前の一致に加えて種類として探す（kind:メモ なら種類としてだけ）
+            var concept = ConceptSearch.Find(query);
+            bool conceptOnly = concept != null && query.Contains(':');
+            var result = conceptOnly ? new SearchResult() : await IndexClient.Instance.SearchAsync(query, _limit, cts.Token);
             if (cts.IsCancellationRequested) return;
             if (result == null)
             {
                 ErrorText = "インデックスに接続できません。Indexer を起動しています…";
                 return;
             }
+            string? queryError = IndexClient.Instance.LastQueryError;
             var items = result.Items.Select(i => new FileItem
             {
                 Name = i.Name,
@@ -107,6 +112,15 @@ public sealed partial class SearchPaneViewModel : PaneViewModel
                 Size = i.Size,
                 Modified = i.Modified,
             }).ToList();
+            int conceptHits = 0;
+            if (concept != null)
+            {
+                var related = await SearchConceptAsync(concept, cts.Token);
+                if (cts.IsCancellationRequested) return;
+                var known = related.Select(i => i.FullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                items = related.Concat(items.Where(i => !known.Contains(i.FullPath))).ToList();
+                conceptHits = related.Count;
+            }
             // 本文検索がオンなら、名前に一致しなかったが本文に一致したものを後ろに足す
             int contentHits = 0;
             if (ContentIndexer.Instance.Enabled && PlainTerms(query) is { Length: > 0 } words)
@@ -121,9 +135,12 @@ public sealed partial class SearchPaneViewModel : PaneViewModel
             }
             if (cts.IsCancellationRequested) return;
             SetResults(items);
-            Summary = $"{result.Total:N0} 件 ({result.ElapsedMs:F0} ms)" + (result.Truncated ? $" ・ 上位 {result.Items.Count:N0} 件を表示" : "")
-                + (contentHits > 0 ? $" ・ 本文に一致 {contentHits:N0} 件" : "");
-            ErrorText = IndexClient.Instance.LastQueryError;
+            Summary = concept == null ? $"{result.Total:N0} 件 ({result.ElapsedMs:F0} ms)"
+                : conceptOnly ? $"種類「{concept.Name}」として {conceptHits:N0} 件"
+                : $"種類「{concept.Name}」として {conceptHits:N0} 件 ・ 名前に一致 {result.Total:N0} 件 ({result.ElapsedMs:F0} ms)";
+            if (!conceptOnly && result.Truncated) Summary += $" ・ 上位 {result.Items.Count:N0} 件を表示";
+            if (contentHits > 0) Summary += $" ・ 本文に一致 {contentHits:N0} 件";
+            ErrorText = queryError;
             CanLoadMore = result.Truncated && _limit < 10000;
         }
         catch (OperationCanceledException) { }
@@ -132,6 +149,51 @@ public sealed partial class SearchPaneViewModel : PaneViewModel
         {
             if (_cts == cts) IsSearching = false;
         }
+    }
+
+    /// <summary>
+    /// 種類として探す。名前に関係する語を含む項目（Windows や AppData の奥は下げる）、ゲームのライブラリ（Steam・Epic など）の直下のフォルダ、
+    /// 印になる項目（.obsidian・.git）を含むフォルダ。関係の強い順に最大 300 件。
+    /// </summary>
+    static async Task<List<FileItem>> SearchConceptAsync(Concept concept, CancellationToken ct)
+    {
+        var hits = new Dictionary<string, (FileItem Item, double Score)>(StringComparer.OrdinalIgnoreCase);
+        void Add(FileItem item, double score)
+        {
+            if (!hits.TryGetValue(item.FullPath, out var old) || old.Score < score) hits[item.FullPath] = (item, score);
+        }
+        var libraries = new List<(string Path, string Label)>();
+        var owners = new List<(string Path, string Label)>();
+        foreach (var q in concept.IndexQueries())
+        {
+            SearchResult? result;
+            try { result = await IndexClient.Instance.SearchAsync(q, 2000, ct); }
+            catch (InvalidOperationException ex) { AppLog.Error($"種類の検索に失敗しました: {q}", ex); continue; }
+            if (result == null) break;
+            foreach (var i in result.Items)
+            {
+                if (i.IsDirectory && concept.LibraryLabel(i.Path) is { } library) libraries.Add((i.Path, library));
+                else if (concept.MarkerLabel(i.Name) is { } marker && Path.GetDirectoryName(i.Path) is { } owner) owners.Add((owner, marker));
+                else if (!concept.IsInsideLibrary(i.Path) && concept.Score(i.Name, i.Path, i.IsDirectory) is var score and > 0)
+                    Add(new FileItem { Name = i.Name, FullPath = i.Path, IsDirectory = i.IsDirectory, Size = i.Size, Modified = i.Modified }, score);
+            }
+        }
+        // ライブラリの直下（1 フォルダ = 1 本のゲーム）と、印を含むフォルダはディスクから情報を取る
+        await Task.Run(() =>
+        {
+            foreach (var (path, label) in libraries)
+            {
+                try
+                {
+                    foreach (var dir in Directory.EnumerateDirectories(path))
+                        if ((File.GetAttributes(dir) & FileAttributes.Hidden) == 0) Add(FromPath(dir, $"{concept.Name}（{label}）"), 2);
+                }
+                catch (Exception) { }
+            }
+            foreach (var (path, label) in owners)
+                if (Directory.Exists(path)) Add(FromPath(path, label), 1.5);
+        }, ct);
+        return hits.Values.OrderByDescending(h => h.Score).ThenBy(h => h.Item.Name, NaturalComparer.Instance).Take(300).Select(h => h.Item).ToList();
     }
 
     /// <summary>キー（ext: など）を除いた、ふつうの語だけ（本文検索に使う）。</summary>

@@ -582,6 +582,8 @@ public sealed partial class MainWindow : Window, IWorkspaceActions
         in:"D:\書類" … そのフォルダ配下だけ
         path:書類\2026 … フルパスに含む
         mode:prefix …… 全体の既定の一致方法（prefix / exact / wildcard / regex / fuzzy）
+        ゲーム・メモ・写真・請求書 … 種類の語だけで探すと、関係する名前に加えてゲームのライブラリ（Steam など）や
+                                Obsidian の保管庫などもまとめて出す（kind:ゲーム なら種類としてだけ）
 
         Enter で検索結果を新しいタブに開きます。
         """);

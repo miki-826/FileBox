@@ -3,8 +3,11 @@ using FileBox.Data;
 
 namespace FileBox.App.Services;
 
-/// <summary>一覧の表示のしかた。詳細（列あり）・大アイコン・並べて表示（タイル）。</summary>
-public enum ViewMode { Details, Icons, Tiles }
+/// <summary>
+/// 一覧の表示のしかた（エクスプローラーの「表示」と同じ 8 種類）。Icons は大アイコン。
+/// 保存は名前の文字列なので、並びを変えても既存の設定は崩れない。
+/// </summary>
+public enum ViewMode { Details, Icons, Tiles, ExtraLarge, Medium, Small, List, Content }
 
 /// <summary>
 /// 場所ごとの表示の好み（フォルダの色・日付でグループ化・表示のしかた）と、全体の好み（大きさ・追加の列・チェックボックス）。

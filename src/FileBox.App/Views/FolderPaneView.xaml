@@ -59,6 +59,51 @@
             </Grid>
         </DataTemplate>
 
+        <!-- 小アイコン・一覧: 小さなアイコンと名前を 1 行で -->
+        <DataTemplate x:Key="SmallTemplate" x:DataType="models:FileItem">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Opacity="{x:Bind ItemOpacity}" ToolTipService.ToolTip="{x:Bind Name}">
+                <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}"
+                                    IconSize="20" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Tag="data" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE735;" FontSize="11" Foreground="#E2A300" Visibility="{x:Bind views:Converters.Visible(IsStarred), Mode=OneWay}" />
+                    <FontIcon Glyph="{x:Bind CloudGlyph, Mode=OneWay}" FontSize="11" Foreground="{x:Bind views:Converters.HexBrush(CloudColor), Mode=OneWay}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- コンテンツ: 1 行に 1 項目。縮小画像・名前・種類と、右に更新日時・サイズ -->
+        <DataTemplate x:Key="ContentTemplate" x:DataType="models:FileItem">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="4,0" Opacity="{x:Bind ItemOpacity}"
+                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}"
+                                    ShowThumbnail="True" IconSize="40" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Tag="data" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
+                        <FontIcon Glyph="&#xE735;" FontSize="11" Foreground="#E2A300" Visibility="{x:Bind views:Converters.Visible(IsStarred), Mode=OneWay}" />
+                        <FontIcon Glyph="{x:Bind CloudGlyph, Mode=OneWay}" FontSize="11" Foreground="{x:Bind views:Converters.HexBrush(CloudColor), Mode=OneWay}" />
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind TypeText}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="{x:Bind ModifiedText}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Right" />
+                    <TextBlock Text="{x:Bind SizeText, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Right" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- アイコン類は左から右へ折り返し、一覧は上から下へ並べて列を右へ足す、コンテンツは縦に 1 列 -->
+        <ItemsPanelTemplate x:Key="WrapPanel">
+            <ItemsWrapGrid Orientation="Horizontal" AreStickyGroupHeadersEnabled="False" />
+        </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="ColumnsPanel">
+            <ItemsWrapGrid Orientation="Vertical" AreStickyGroupHeadersEnabled="False" />
+        </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="StackPanel">
+            <ItemsStackPanel AreStickyGroupHeadersEnabled="False" />
+        </ItemsPanelTemplate>
+
         <!-- 並べて表示: アイコンの右に名前・種類・サイズ -->
         <DataTemplate x:Key="TileTemplate" x:DataType="models:FileItem">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Opacity="{x:Bind ItemOpacity}" ToolTipService.ToolTip="{x:Bind Name}">
@@ -125,14 +170,30 @@
                 </AppBarButton.Icon>
                 <AppBarButton.Flyout>
                     <MenuFlyout x:Name="ViewMenu" Opening="ViewMenu_Opening">
-                        <RadioMenuFlyoutItem x:Name="DetailsItem" Text="詳細" GroupName="mode" Tag="Details" Click="ViewMode_Click">
-                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FD;" /></RadioMenuFlyoutItem.Icon>
-                        </RadioMenuFlyoutItem>
-                        <RadioMenuFlyoutItem x:Name="IconsItem" Text="大アイコン" GroupName="mode" Tag="Icons" Click="ViewMode_Click">
+                        <!-- エクスプローラーの「表示」と同じ並び -->
+                        <RadioMenuFlyoutItem Text="特大アイコン" GroupName="mode" Tag="ExtraLarge" Click="ViewMode_Click">
                             <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE91B;" /></RadioMenuFlyoutItem.Icon>
                         </RadioMenuFlyoutItem>
-                        <RadioMenuFlyoutItem x:Name="TilesItem" Text="並べて表示" GroupName="mode" Tag="Tiles" Click="ViewMode_Click">
+                        <RadioMenuFlyoutItem Text="大アイコン" GroupName="mode" Tag="Icons" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B9;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="中アイコン" GroupName="mode" Tag="Medium" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A9;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="小アイコン" GroupName="mode" Tag="Small" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE80A;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="一覧" GroupName="mode" Tag="List" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE8EF;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="詳細" GroupName="mode" Tag="Details" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FD;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="並べて表示" GroupName="mode" Tag="Tiles" Click="ViewMode_Click">
                             <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xECA5;" /></RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="コンテンツ" GroupName="mode" Tag="Content" Click="ViewMode_Click">
+                            <RadioMenuFlyoutItem.Icon><FontIcon Glyph="&#xE7C3;" /></RadioMenuFlyoutItem.Icon>
                         </RadioMenuFlyoutItem>
                         <MenuFlyoutSeparator />
                         <MenuFlyoutItem Text="大きく (Ctrl+ホイール上)" Click="ZoomIn_Click">
@@ -144,6 +205,9 @@
                         <MenuFlyoutSeparator />
                         <ToggleMenuFlyoutItem x:Name="CheckBoxItem" Text="チェックボックスで選択" Click="CheckBoxes_Click" />
                         <ToggleMenuFlyoutItem x:Name="HiddenItem" Text="隠しファイルを表示 (Ctrl+H)" Click="Hidden_Click" />
+                        <MenuFlyoutItem Text="プレビュー・詳細ウィンドウ (Space)" Click="Preview_Click">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A1;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                     </MenuFlyout>
                 </AppBarButton.Flyout>
             </AppBarButton>
@@ -205,13 +269,13 @@
                         <Grid ColumnDefinitions="42,*,150,140,110,0,0,0" Opacity="{x:Bind ItemOpacity}">
                             <views:FileItemIcon ItemPath="{x:Bind FullPath}" Extension="{x:Bind Extension}" IsDirectory="{x:Bind IsDirectory}" IsDrive="{x:Bind IsDrive}" HorizontalAlignment="Left" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
-                                <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="6">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
                                     <TextBlock Tag="data" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
                                     <FontIcon Grid.Column="1" Glyph="&#xE735;" FontSize="12" Foreground="#E2A300" ToolTipService.ToolTip="星付き"
                                               Visibility="{x:Bind views:Converters.Visible(IsStarred), Mode=OneWay}" />
                                     <FontIcon Grid.Column="2" Glyph="{x:Bind CloudGlyph, Mode=OneWay}" FontSize="12" Foreground="{x:Bind views:Converters.HexBrush(CloudColor), Mode=OneWay}"
                                               ToolTipService.ToolTip="{x:Bind CloudTip, Mode=OneWay}" />
-                                    <TextBlock Grid.Column="3" Tag="data" Text="{x:Bind TagsText, Mode=OneWay}" FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                    <TextBlock Grid.Column="3" Tag="data" Text="{x:Bind TagsText, Mode=OneWay}" FontSize="11" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                 </Grid>
                                 <ProgressBar Visibility="{x:Bind views:Converters.Visible(IsDrive)}" Value="{x:Bind views:Converters.Percent(DriveUsage)}"
@@ -231,6 +295,7 @@
             <!-- 大アイコン・並べて表示（詳細と同じ操作をそのまま受ける） -->
             <GridView x:Name="Tiles" Margin="4,4,4,0" Visibility="Collapsed" AutomationProperties.Name="フォルダ内のファイル一覧（アイコン）"
                       SelectionMode="Extended"
+                      ItemsPanel="{StaticResource WrapPanel}"
                       ItemContainerStyle="{StaticResource TileItem}"
                       ItemTemplate="{StaticResource IconTemplate}"
                       DoubleTapped="List_DoubleTapped"

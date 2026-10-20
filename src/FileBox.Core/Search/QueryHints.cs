@@ -21,6 +21,7 @@ public static class QueryHints
         ("tag:", "FileBox のタグを付けたもの", Array.Empty<string>()),
         ("is:", "星を付けたもの", new[] { "starred" }),
         ("content:", "ファイルの中身（本文検索をオンにしたとき）", Array.Empty<string>()),
+        ("kind:", "種類で探す（ゲームのフォルダ、メモらしいファイルなど）", new[] { "ゲーム", "メモ", "写真", "請求書", "インストーラー" }),
     };
 
     static readonly Dictionary<string, string> ExampleText = new()

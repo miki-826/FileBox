@@ -27,8 +27,14 @@ public sealed partial class FolderPaneView : UserControl
     static readonly double[] RowHeights = { 32, 40, 48, 60 };
     static readonly double[] RowIcons = { 24, 32, 40, 48 };
     static readonly double[] RowFonts = { 12, 14, 16, 18 };
-    static readonly double[] IconTiles = { 76, 108, 148, 200 };
-    static readonly double[] IconSizes = { 40, 64, 96, 144 };
+    static readonly double[] ExtraLargeIcons = { 160, 200, 232, 256 };
+    static readonly double[] LargeIcons = { 72, 96, 128, 160 };
+    static readonly double[] MediumIcons = { 40, 48, 64, 80 };
+    static readonly double[] SmallIcons = { 16, 20, 24, 28 };
+    static readonly double[] SmallWidths = { 200, 240, 280, 320 };
+    static readonly double[] SmallHeights = { 28, 32, 36, 40 };
+    static readonly double[] ContentIcons = { 32, 40, 48, 56 };
+    static readonly double[] ContentHeights = { 48, 56, 64, 76 };
     static readonly double[] TileWidths = { 200, 240, 280, 330 };
     static readonly double[] TileHeights = { 52, 64, 76, 92 };
     static readonly double[] TileIcons = { 32, 48, 56, 72 };
@@ -154,7 +160,26 @@ public sealed partial class FolderPaneView : UserControl
         List.Visibility = mode == ViewMode.Details ? Visibility.Visible : Visibility.Collapsed;
         HeaderGrid.Visibility = List.Visibility;
         Tiles.Visibility = mode == ViewMode.Details ? Visibility.Collapsed : Visibility.Visible;
-        Tiles.ItemTemplate = (DataTemplate)Resources[mode == ViewMode.Tiles ? "TileTemplate" : "IconTemplate"];
+        Tiles.ItemTemplate = (DataTemplate)Resources[mode switch
+        {
+            ViewMode.Tiles => "TileTemplate",
+            ViewMode.Small or ViewMode.List => "SmallTemplate",
+            ViewMode.Content => "ContentTemplate",
+            _ => "IconTemplate",
+        }];
+        // 並べ方を変えるときは、項目を外してから差し替える（項目を持ったままの差し替えは描き直しが不安定になる）。項目は ApplyItems で戻す
+        var panel = (ItemsPanelTemplate)Resources[mode switch { ViewMode.List => "ColumnsPanel", ViewMode.Content => "StackPanel", _ => "WrapPanel" }];
+        if (Tiles.ItemsPanel != panel)
+        {
+            Tiles.ItemsSource = null;
+            Tiles.ItemsPanel = panel;
+        }
+        // 一覧は上から下へ並べて、あふれたら右の列へ（横にスクロール）
+        bool sideways = mode == ViewMode.List;
+        ScrollViewer.SetHorizontalScrollMode(Tiles, sideways ? ScrollMode.Enabled : ScrollMode.Disabled);
+        ScrollViewer.SetHorizontalScrollBarVisibility(Tiles, sideways ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled);
+        ScrollViewer.SetVerticalScrollMode(Tiles, sideways ? ScrollMode.Disabled : ScrollMode.Enabled);
+        ScrollViewer.SetVerticalScrollBarVisibility(Tiles, sideways ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto);
         ApplySelectionMode();
         if (remember)
         {
@@ -174,12 +199,13 @@ public sealed partial class FolderPaneView : UserControl
 
     void ViewMenu_Opening(object sender, object e)
     {
-        DetailsItem.IsChecked = _mode == ViewMode.Details;
-        IconsItem.IsChecked = _mode == ViewMode.Icons;
-        TilesItem.IsChecked = _mode == ViewMode.Tiles;
+        foreach (var mi in ViewMenu.Items.OfType<RadioMenuFlyoutItem>())
+        {
+            mi.IsChecked = (string)mi.Tag == _mode.ToString();
+            mi.IsEnabled = !ViewModel.IsPc;
+        }
         CheckBoxItem.IsChecked = ViewPreferences.CheckBoxes;
         HiddenItem.IsChecked = FolderPaneViewModel.ShowHidden;
-        DetailsItem.IsEnabled = IconsItem.IsEnabled = TilesItem.IsEnabled = !ViewModel.IsPc;
     }
 
     void ViewMode_Click(object sender, RoutedEventArgs e)
@@ -228,17 +254,22 @@ public sealed partial class FolderPaneView : UserControl
             }
             if (container.Content is FileItem { IsDrive: false } file) _ = LoadExtrasAsync(file);
         }
-        else if (_mode == ViewMode.Icons)
-        {
-            container.Width = IconTiles[z];
-            container.Height = IconTiles[z] + 36;
-            if (icon != null) icon.IconSize = IconSizes[z];
-        }
         else
         {
-            container.Width = TileWidths[z];
-            container.Height = TileHeights[z];
-            if (icon != null) icon.IconSize = TileIcons[z];
+            // アイコン類はアイコンの下に 2 行の名前、小アイコン・一覧は 1 行、コンテンツは幅いっぱい
+            var (width, height, size) = _mode switch
+            {
+                ViewMode.ExtraLarge => (ExtraLargeIcons[z] + 28, ExtraLargeIcons[z] + 52, ExtraLargeIcons[z]),
+                ViewMode.Icons => (Math.Max(84, LargeIcons[z] + 28), LargeIcons[z] + 52, LargeIcons[z]),
+                ViewMode.Medium => (Math.Max(84, MediumIcons[z] + 40), MediumIcons[z] + 52, MediumIcons[z]),
+                ViewMode.Small or ViewMode.List => (SmallWidths[z], SmallHeights[z], SmallIcons[z]),
+                ViewMode.Content => (double.NaN, ContentHeights[z], ContentIcons[z]),
+                _ => (TileWidths[z], TileHeights[z], TileIcons[z]),
+            };
+            container.Width = width;
+            container.Height = height;
+            container.HorizontalAlignment = _mode == ViewMode.Content ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+            if (icon != null) icon.IconSize = size;
         }
     }
 
@@ -272,7 +303,7 @@ public sealed partial class FolderPaneView : UserControl
         for (int i = 0; i < headers.Length; i++)
         {
             string? key = i < ViewPreferences.Columns.Count ? ViewPreferences.Columns[i] : null;
-            headers[i].Visibility = key != null && _columns[0] > 0 ? Visibility.Visible : Visibility.Collapsed;
+            headers[i].Visibility = key != null && i < _extraFit ? Visibility.Visible : Visibility.Collapsed;
             headers[i].Content = key == null ? "" : FileProperties.Columns.FirstOrDefault(c => c.Key == key).Label + (_extraSort == i ? (_extraDesc ? " ▼" : " ▲") : "");
         }
     }
@@ -372,21 +403,40 @@ public sealed partial class FolderPaneView : UserControl
         View.ScrollIntoView(item);
     }
 
-    // ---------------------------------------------------------------- 列幅（区画が狭いときは日時・種類・追加の列を隠す）
+    // ---------------------------------------------------------------- 列幅（区画が狭いときは右の列から隠す）
 
+    static readonly double[] ColumnWidths = { 150, 140, 110 };
+    const double ExtraWidth = 130;
+    const double NameMinWidth = 260;
     double[] _columns = { 150, 140, 110 };
+    int _extraFit = 3;
 
     void List_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        double w = e.NewSize.Width;
-        double[] next = w >= 700 ? new double[] { 150, 140, 110 }
-                      : w >= 520 ? new double[] { 140, 0, 100 }
-                      : new double[] { 0, 0, 90 };
-        if (next.SequenceEqual(_columns)) return;
+        var (next, extraFit) = FitColumns(e.NewSize.Width);
+        if (next.SequenceEqual(_columns) && extraFit == _extraFit) return;
         _columns = next;
+        _extraFit = extraFit;
         ApplyColumns(HeaderGrid);
         UpdateExtraHeaders();
         if (_mode == ViewMode.Details) ForEachContainer(c => { if (c.ContentTemplateRoot is Grid g) ApplyColumns(g); });
+    }
+
+    /// <summary>
+    /// 名前の列に最低限の幅を残し、エクスプローラーと同じく右の列から隠す。
+    /// 狭くなると 追加の列 → サイズ → 種類 → 更新日時 の順に消える（更新日時は最後まで残す）。
+    /// </summary>
+    static (double[] Columns, int ExtraFit) FitColumns(double width)
+    {
+        double room = width - 42 - NameMinWidth;
+        var columns = new double[3];
+        for (int c = 0; c < 3 && room >= ColumnWidths[c]; c++)
+        {
+            columns[c] = ColumnWidths[c];
+            room -= ColumnWidths[c];
+        }
+        int extraFit = columns[2] > 0 ? (int)Math.Clamp(Math.Floor(room / ExtraWidth), 0, 3) : 0;
+        return (columns, extraFit);
     }
 
     void List_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -406,8 +456,8 @@ public sealed partial class FolderPaneView : UserControl
         // 追加の列は、狭いときは隠す
         for (int c = 0; c < 3; c++)
         {
-            bool on = c < ViewPreferences.Columns.Count && _columns[0] > 0;
-            grid.ColumnDefinitions[c + 5].Width = new GridLength(on ? 130 : 0);
+            bool on = c < ViewPreferences.Columns.Count && c < _extraFit;
+            grid.ColumnDefinitions[c + 5].Width = new GridLength(on ? ExtraWidth : 0);
             SetColumnVisible(grid, c + 5, on);
         }
     }
@@ -598,6 +648,15 @@ public sealed partial class FolderPaneView : UserControl
             }
             Add(FileKinds.IsArchive(item.Extension) ? "中身を見る（プレビュー）" : "プレビュー・詳細", "", () => _actions.TogglePreview(ViewModel), "Space");
             if (!item.IsDrive) Add("変換・整理…", "\uE8A5", () => _ = OpenToolsAsync(paths));
+            // 画像: エクスプローラーと同じく、その場で回転・デスクトップの背景に設定
+            var images = selected.Where(s => !s.IsDirectory && ImageActions.CanRotate(s.Extension)).Select(s => s.FullPath).ToList();
+            if (images.Count > 0 && images.Count == selected.Count)
+            {
+                Add("右に回転", "\uE7AD", () => _ = RotateAsync(images, clockwise: true));
+                Add("左に回転", "\uE7AD", () => _ = RotateAsync(images, clockwise: false));
+            }
+            if (selected.Count == 1 && !item.IsDirectory && ImageActions.CanBeWallpaper(item.Extension))
+                Add("デスクトップの背景として設定", "\uE7F4", () => _ = SetWallpaperAsync(item.FullPath));
             if (item.IsDirectory && !item.IsDrive) menu.Items.Add(FolderColorMenu(selected.Where(s => s.IsDirectory).Select(s => s.FullPath).ToList()));
             if (!item.IsDrive)
             {
@@ -657,6 +716,38 @@ public sealed partial class FolderPaneView : UserControl
             Add("プロパティ", "", () => ShellService.ShowProperties(ViewModel.CurrentPath));
         }
         return menu;
+    }
+
+    async Task RotateAsync(IReadOnlyList<string> paths, bool clockwise)
+    {
+        int done = 0;
+        foreach (var path in paths)
+        {
+            if (!Guard.Can(Permission.Modify, path, "rotate")) continue;
+            try
+            {
+                await ImageActions.RotateAsync(path, clockwise);
+                Guard.Done("rotate", path, detail: clockwise ? "右に 90 度" : "左に 90 度");
+                done++;
+            }
+            catch (Exception ex)
+            {
+                App.Window?.ShowInfo($"{Path.GetFileName(path)} を回転できませんでした: {Core.Files.FriendlyError.Explain(ex)}", InfoBarSeverity.Error);
+            }
+        }
+        if (done == 0) return;
+        ViewModel.PendingSelection = paths[0];
+        await ViewModel.RefreshAsync();
+    }
+
+    async Task SetWallpaperAsync(string path)
+    {
+        try
+        {
+            await ImageActions.SetWallpaperAsync(path);
+            App.Window?.ShowInfo($"{Path.GetFileName(path)} をデスクトップの背景に設定しました", InfoBarSeverity.Success);
+        }
+        catch (Exception ex) { App.Window?.ShowInfo($"背景に設定できませんでした: {ex.Message}", InfoBarSeverity.Error); }
     }
 
     void Tools_Click(object sender, RoutedEventArgs e) => _ = OpenToolsAsync(Selected.Where(s => !s.IsDrive).Select(s => s.FullPath).ToList());
